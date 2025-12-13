@@ -7,3 +7,4 @@ slurm-*
 *.pyc
 .idea/*
 .idea
+/.venv/
