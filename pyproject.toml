@@ -1,14 +1,14 @@
 [project]
 name = "taxi"
 version = "0.1.0"
-description = "Add your description here"
+description = "An agent-based simulation of a taxi-passenger city system."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
     "pandas>=2.3.3",
-    "pandas-stubs~=2.3.3",
+    "pandas-stubs==2.3.3.251219",
     "scipy>=1.16.3",
-    "scipy-stubs~=1.16.3",
+    "scipy-stubs==1.17.0.0",
 ]
