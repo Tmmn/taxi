@@ -81,8 +81,10 @@ The basic parameters for each simulation are stored in the `*.conf` files of the
 For a batch run for the same system with different parameter sets, there is always a base config file (e.g. `configs/0606_base.conf`), from which a series of config files are generated using the `generate_configs.py` file. Usage:
 
 ```
-python generate_configs.py 0711_base.conf generate_mode
+python generate_configs.py generate_mode
 ```
+
+where `generate_mode` is a string that specifies which set of configurations to generate. See the comments in the `generate_configs.py` file for more details.
 
 ## Batch run
 
@@ -92,11 +94,16 @@ The file `run.py` initiates one run from a config file and writes the results of
 python run.py 0525_1_priced
 ```
 
-where `0525_1_priced.conf `is a file name from the `configs` directory, and the results will be saved with a similarly beginning filename into the `results` directory as a `csv.gz` (for the aggregated metrics) and two `json,gz` files (one for the per taxi and one for the per results metrics).
+where `0525_1_priced.conf `is a file name from the `configs` directory, and the results will be saved with a similarly beginning filename into the `results` directory as a `csv.gz` (for the aggregated metrics) and two `json.gz` files (one for the per taxi and one for the per results metrics).
 
-For batch running of several configurations see the manual of `./batch_run.sh`. On servers with a SLURM system, I used `./batch_slurm.sh` and `./batch_slurm_big.sh` to submit jobs to the processing queue. 
+For batch running of several configurations see the manual of `./batch_run.sh`. Similar scripts can be used to submit jobs on servers with a SLURM system.
 
 *Note: the scripts have to be marked as executable. Or you can use a `bash batch_run.sh ...` syntax.*
+
+There is also a `batch_run.py` script that can be used to run several simulations in parallel on a multi-core machine directly without a batch script. Provide the folder containing all .conf files as argument. Usage:
+```
+python batch_run.py configs/passenger_fairness
+```
 
 ## Debugging with interactive visualization
 

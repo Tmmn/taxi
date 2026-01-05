@@ -1,4 +1,3 @@
-
 import numpy as np
 from random import shuffle
 
@@ -63,16 +62,16 @@ class City:
         if "base_coords" in config:
             self.base_coords = config["base_coords"]
         else:
-            self.base_coords = [int(self.n/2), int(self.m/2)]
+            self.base_coords = [int(self.n / 2), int(self.m / 2)]
 
         # list that stores taxi_id of available taxis at the
         # specific position on the grid
         # we initialize this array with empty sets
         # it can be a list because of the continuous indexing scheme
-        self.A = [set() for _ in range(self.n*self.m)]
+        self.A = [set() for _ in range(self.n * self.m)]
 
         # storing neighbors in a dict for fast access
-        self.N = {c: self.neighbors(c) for c in range(self.n*self.m)}
+        self.N = {c: self.neighbors(c) for c in range(self.n * self.m)}
 
         # generating stacks for request coordinate choice
 
@@ -95,7 +94,7 @@ class City:
             [distr["strength"] for distr in self.request_origin_distributions]
         # creating probabilities from strengths
         self.request_origin_probabilities = \
-            np.cumsum(np.array(self.request_origin_strengths)/sum(self.request_origin_strengths))
+            np.cumsum(np.array(self.request_origin_strengths) / sum(self.request_origin_strengths))
 
         # destinations, if different from origins
         if 'request_destination_distributions' in config:
@@ -106,7 +105,7 @@ class City:
             self.request_destination_strengths = \
                 [distr["strength"] for distr in self.request_destination_distributions]
             self.request_destination_probabilities = \
-                np.cumsum(np.array(self.request_destination_strengths)/sum(self.request_destination_strengths))
+                np.cumsum(np.array(self.request_destination_strengths) / sum(self.request_destination_strengths))
         else:
             self.request_destination_distributions = \
                 self.request_origin_distributions
@@ -121,7 +120,7 @@ class City:
         if "hard_limit" in config:
             self.hard_limit = config["hard_limit"]
         else:
-            self.hard_limit = self.n+self.m
+            self.hard_limit = self.n + self.m
 
         if 'length' not in config:
             self.length = int(2e5)
@@ -134,17 +133,17 @@ class City:
         for i in range(self.m):
             for j in range(self.n):
                 if i in self.coordinate_dict_ij_to_c:
-                    self.coordinate_dict_ij_to_c[i][j]=self.ij_to_c(i,j)
+                    self.coordinate_dict_ij_to_c[i][j] = self.ij_to_c(i, j)
                 else:
-                    self.coordinate_dict_ij_to_c[i] = {j : self.ij_to_c(i,j)}
+                    self.coordinate_dict_ij_to_c[i] = {j: self.ij_to_c(i, j)}
 
         self.coordinate_dict_c_to_ij = {}
-        for c in range(self.n*self.m):
+        for c in range(self.n * self.m):
             self.coordinate_dict_c_to_ij[c] = self.c_to_ij(c)
 
         # pre-storing BFS-trees until the depth self.hard_limit
         self.bfs_trees = {}
-        for c in range(self.n*self.m):
+        for c in range(self.n * self.m):
             self.bfs_trees[c] = self.create_BFS_tree(c)
 
         # pre-storing inverse CDFs for arbitrary distributions
@@ -172,46 +171,42 @@ class City:
                 d["interp_min"] = np.min(i)
                 d["interp_max"] = np.max(i)
 
+    def _get_coordinates(self, probabilities, coordstacks, distributions):
+        if len(probabilities) > 1:
+            try:
+                p = self.request_p.pop()
+            except IndexError:
+                self.request_p.extend(np.random.random(self.length))
+                p = self.request_p.pop()
+            ind = np.digitize(p, probabilities)
+        else:
+            ind = 0
+
+        try:
+            x, y = coordstacks[ind].pop()
+        except IndexError:
+            coordstacks[ind].extend(
+                self.generate_coords(**distributions[ind])
+            )
+            x, y = coordstacks[ind].pop()
+
+        return x, y
+
     def create_one_request_coord(self):
         # binning the generated random numbers from request_p for origin distributions
         # these numbers are going to decode from which distribution to choose in the given step
-        if len(self.request_origin_probabilities)>1:
-            try:
-                p = self.request_p.pop()
-            except IndexError:
-                self.request_p.extend(np.random.random(self.length))
-                p = self.request_p.pop()
-            ind = np.digitize(p, self.request_origin_probabilities)
-        else:
-            ind = 0
-
-        try:
-            ox, oy = self.request_origin_coordstacks[ind].pop()
-        except IndexError:
-            self.request_origin_coordstacks[ind].extend(
-                self.generate_coords(**self.request_origin_distributions[ind])
-            )
-            ox, oy = self.request_origin_coordstacks[ind].pop()
+        ox, oy = self._get_coordinates(
+            self.request_origin_probabilities,
+            self.request_origin_coordstacks,
+            self.request_origin_distributions
+        )
 
         # binning the generated random numbers from request_p for destination distributions
-        if len(self.request_destination_probabilities)>1:
-            # destination
-            try:
-                p = self.request_p.pop()
-            except IndexError:
-                self.request_p.extend(np.random.random(self.length))
-                p = self.request_p.pop()
-            ind = np.digitize(p, self.request_destination_probabilities)
-        else:
-            ind = 0
-
-        try:
-            dx, dy = self.request_destination_coordstacks[ind].pop()
-        except IndexError:
-            self.request_destination_coordstacks[ind].extend(
-                self.generate_coords(**self.request_destination_distributions[ind])
-            )
-            dx, dy = self.request_destination_coordstacks[ind].pop()
+        dx, dy = self._get_coordinates(
+            self.request_destination_probabilities,
+            self.request_destination_coordstacks,
+            self.request_destination_distributions
+        )
 
         return ox, oy, dx, dy
 
@@ -302,13 +297,13 @@ class City:
 
     def ij_to_c(self, i, j):
         # grid coordinates to continuous coordinates
-        return self.n*i+j
+        return self.n * i + j
 
     def c_to_ij(self, c):
         # continuous coordinates to grid coordinates
-        return int(c/self.n), c % self.n
+        return int(c / self.n), c % self.n
 
-    #@profile
+    # @profile
     def generate_coords(self, **distr_spec):
         """
 
@@ -324,8 +319,8 @@ class City:
         """
         if "sigma" in distr_spec:
             temp = map(
-                lambda t: (int(round(t[0]*distr_spec["sigma"], 0)+distr_spec["location"][0]),
-                           int(round(t[1]*distr_spec["sigma"], 0))+distr_spec["location"][1]),
+                lambda t: (int(round(t[0] * distr_spec["sigma"], 0) + distr_spec["location"][0]),
+                           int(round(t[1] * distr_spec["sigma"], 0)) + distr_spec["location"][1]),
                 np.random.normal(size=(self.length, 2))
             )
         else:
@@ -336,8 +331,8 @@ class City:
             y = distr_spec["cdf_inv"](u) * np.sin(phi)
 
             temp = map(
-                lambda t: (int(round(t[0], 0)+distr_spec["location"][0]),
-                           int(round(t[1], 0)+distr_spec["location"][1])),
+                lambda t: (int(round(t[0], 0) + distr_spec["location"][0]),
+                           int(round(t[1], 0) + distr_spec["location"][1])),
                 zip(x, y)
             )
 
@@ -355,14 +350,14 @@ class City:
 
         """
         try:
-            hx,hy = self.taxi_home_coordstack.pop()
+            hx, hy = self.taxi_home_coordstack.pop()
         except IndexError:
             temp = list(zip(np.random.randint(0, self.n, 1000), np.random.randint(0, self.m, 1000)))
             self.taxi_home_coordstack.extend(temp)
-            hx,hy = self.taxi_home_coordstack.pop()
-        return hx,hy
+            hx, hy = self.taxi_home_coordstack.pop()
+        return hx, hy
 
-    #@profile
+    # @profile
     def find_nearest_available_taxis(
             self,
             source,
@@ -413,7 +408,7 @@ class City:
             # print(self.A)
             p = p.union(ta)
 
-            if mode == "nearest" and len(ta)>0:
+            if mode == "nearest" and len(ta) > 0:
                 # print("I've found something!")
                 break
 
@@ -421,11 +416,10 @@ class City:
 
         return list(p)
 
-
     def create_BFS_tree(
             self,
             source,
-            max_depth = None
+            max_depth=None
     ):
         """
 
@@ -444,7 +438,7 @@ class City:
         """
 
         if max_depth == None:
-            max_depth = self.hard_limit+1
+            max_depth = self.hard_limit + 1
 
         # BFS init
         # queue for BFS visit
@@ -474,7 +468,7 @@ class City:
 
         bfs_tree = {}
         # reverse dict
-        for k,v in visited.items():
+        for k, v in visited.items():
             if v in bfs_tree:
                 bfs_tree[v].append(k)
             else:

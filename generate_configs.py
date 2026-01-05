@@ -10,6 +10,7 @@
 import sys
 import json
 import numpy as np
+
 from city_model import City
 
 
@@ -47,27 +48,27 @@ class ConfigGenerator:
         self.scale = 100
 
         # system volume
-        self.V = self.common['n']*self.common['m']*self.scale**2
+        self.V = self.common['n'] * self.common['m'] * self.scale ** 2
 
         # velocity of taxis in distance unt per time unit
         # should correspond to 36 km/h!!!
         self.v = 1
-    
+
         # time unit in seconds
-        self.tu = self.scale/10*self.v
-    
+        self.tu = self.scale / 10 * self.v
+
         # three days in simulation units, supposing 8 working hours/day
-        simulation_time = round(0.01*days*8*3600/self.tu, 0)*100
+        simulation_time = round(0.01 * days * 8 * 3600 / self.tu, 0) * 100
         self.common['max_time'] = simulation_time
-        self.common['batch_size'] = int(simulation_time/(days*16)) # 16 sample points in each shift
-    
+        self.common['batch_size'] = int(simulation_time / (days * 16))  # 16 sample points in each shift
+
         # reset taxi positions after an 8-hour shift
-        self.reset_time = round(0.01*8*3600/self.tu, 0)*100
+        self.reset_time = round(0.01 * 8 * 3600 / self.tu, 0) * 100
 
         self.behav_types = [("go_back", "base", "false"),
-            ("stay", "base", "false"),
-            ("stay", "home", "false"),
-            ("stay", "home", "true")]
+                            ("stay", "base", "false"),
+                            ("stay", "home", "false"),
+                            ("stay", "home", "true")]
 
         self.len_dict = {}
 
@@ -100,9 +101,9 @@ class ConfigGenerator:
         -------
 
         """
-        
+
         conf = self.common
-        
+
         conf.pop('request_origin_distributions', None)
         conf.pop('request_destination_distributions', None)
 
@@ -129,7 +130,7 @@ class ConfigGenerator:
 
         conf['request_rate'] = llambda
 
-        if type(alg)==int:
+        if type(alg) == int:
             conf['matching'] = self.alg_list[alg]
         else:
             conf["matching"] = alg
@@ -161,13 +162,13 @@ class ConfigGenerator:
 
         # filename
         fname = self.base.split('.')[0] + \
-             '_d_' + d_string + \
-             '_R_' + R_string + \
-             '_alg_' + config_dict['matching'] + \
-             '_geom_' + str(config_dict['geom']) + \
-             '_behav_' + config_dict['behaviour'] + \
-             '_ic_' + config_dict['initial_conditions'] + \
-             '_reset_' + config_dict['reset']
+                '_d_' + d_string + \
+                '_R_' + R_string + \
+                '_alg_' + config_dict['matching'] + \
+                '_geom_' + str(config_dict['geom']) + \
+                '_behav_' + config_dict['behaviour'] + \
+                '_ic_' + config_dict['initial_conditions'] + \
+                '_reset_' + config_dict['reset']
         if run is not None:
             fname += '_run_' + str(run) + '.conf'
         else:
@@ -179,13 +180,19 @@ class ConfigGenerator:
 
 
 if __name__ == '__main__':
-
+    supported_modes = ["sweep", "long_run", "new_geoms", "multiple_runs", "figure2", "missing", "passenger_fairness"]
+    if len(sys.argv) < 2 or sys.argv[1] not in supported_modes:
+        print(f"Please give a mode argument: {', '.join(supported_modes)}")
+        sys.exit(1)
     mode = sys.argv[1]
 
     if mode == "sweep":
 
         "Generating configs for all possible config combinations for exploration purposes."
 
+        if len(sys.argv) < 3:
+            print("Please give a base config file as second argument!")
+            sys.exit(1)
         g = ConfigGenerator(sys.argv[2])
 
         # ====================================================
@@ -201,19 +208,18 @@ if __name__ == '__main__':
                     # different ratios
                     R_list = list(np.linspace(0.05, 1, 20))
                     for R in R_list:
-                            # inserting different algorithms
-                            for alg in g.alg_list:
+                        # inserting different algorithms
+                        for alg in g.alg_list:
+                            conf = g.generate_config(d, R, alg, geom, behav_type)
+                            fname, content = g.dump_config(conf)
 
-                                conf = g.generate_config(d, R, alg, geom, behav_type)
-                                fname, content = g.dump_config(conf)
-
-                                # dump
-                                f = open('configs/' + fname, 'w')
-                                f.write(content)
-                                f.close()
+                            # dump
+                            f = open('configs/' + fname, 'w')
+                            f.write(content)
+                            f.close()
 
     elif mode == "long_run":
-        gen = ConfigGenerator('2019_02_14_base.conf',days=100)
+        gen = ConfigGenerator('2019_02_14_base.conf', days=100)
         conf = gen.generate_config(225, 0.5, 'nearest', 0, 1)
         fname, content = gen.dump_config(conf)
         fname = fname.split('.')[0] + '_long_run.conf'
@@ -224,7 +230,7 @@ if __name__ == '__main__':
 
     elif mode == "new_geoms":
         gen = ConfigGenerator('2019_02_14_base.conf')
-        geoms = [0,7,8,9]
+        geoms = [0, 7, 8, 9]
         for g in geoms:
             print(g)
             conf = gen.generate_config(225, 0.5, 'nearest', g, 1)
@@ -261,7 +267,7 @@ if __name__ == '__main__':
         # Figure 2
 
         taxi_density = np.linspace(3, 30, 10)  # rho = N/A [1/km^2]
-        d_list = np.sqrt(1e6/taxi_density)
+        d_list = np.sqrt(1e6 / taxi_density)
         R_list = [0.2, 0.4, 0.6]
         for d in d_list:
             for R in R_list:
@@ -277,7 +283,7 @@ if __name__ == '__main__':
         # Figure 4
 
         taxi_density = 15
-        d = np.sqrt(1e6/taxi_density)
+        d = np.sqrt(1e6 / taxi_density)
         R_list = np.linspace(0.06, 1.02, 17)
         geom_list = [0, 1, 2, 3, 6]
         for R in R_list:
@@ -295,7 +301,7 @@ if __name__ == '__main__':
 
         R = 0.4
         for g in geom_list:
-            for behav in [0,1]:
+            for behav in [0, 1]:
                 conf = gen.generate_config(d, R, 'nearest', g, behav)
                 for r in range(10):
                     if conf is not None:
@@ -308,7 +314,7 @@ if __name__ == '__main__':
         # Figure 6
 
         taxi_density = 15
-        d = np.sqrt(1e6/taxi_density)
+        d = np.sqrt(1e6 / taxi_density)
         R = 0.4
 
         geom_list = [0, 1, 2, 3, 6]
@@ -328,7 +334,7 @@ if __name__ == '__main__':
     elif mode == "figure2":
         gen = ConfigGenerator('2019_05_06_base.conf')
         taxi_density = np.linspace(3, 30, 40)  # rho = N/A [1/km^2]
-        d_list = np.sqrt(1e6/taxi_density)
+        d_list = np.sqrt(1e6 / taxi_density)
         R_list = [0.2, 0.4, 0.6]
         for d in d_list:
             for R in R_list:
@@ -336,7 +342,7 @@ if __name__ == '__main__':
                 for r in range(10):
                     if conf is not None:
                         fname, content = gen.dump_config(conf, run=r)
-                        fname = fname.split('.')[0]+'_question.conf'
+                        fname = fname.split('.')[0] + '_question.conf'
                         f = open('configs/' + fname, 'w')
                         f.write(content)
                         f.close()
@@ -367,12 +373,12 @@ if __name__ == '__main__':
 
         # more runs for averaging small R better
         taxi_density = np.linspace(3, 30, 10)  # rho = N/A [1/km^2]
-        d_list = np.sqrt(1e6/taxi_density)
+        d_list = np.sqrt(1e6 / taxi_density)
         R_list = [0.2, 0.4, 0.6]
         for d in d_list:
             for R in R_list:
                 conf = gen.generate_config(d, R, 'nearest', 0, 1)
-                for r in range(10,20):
+                for r in range(10, 20):
                     if conf is not None:
                         fname, content = gen.dump_config(conf, run=r)
                         fname = fname.split('.')[0] + '_missing.conf'
@@ -384,7 +390,7 @@ if __name__ == '__main__':
         # Figure 6
 
         taxi_density = 15
-        d = np.sqrt(1e6/taxi_density)
+        d = np.sqrt(1e6 / taxi_density)
         R = 0.4
 
         geom_list = [0, 1, 2, 3, 6]
@@ -405,7 +411,7 @@ if __name__ == '__main__':
     elif mode == "passenger_fairness":
         gen = ConfigGenerator('passenger_fairness/test.conf', 1)
         taxi_density = 15
-        d = np.sqrt(1e6/taxi_density)
+        d = np.sqrt(1e6 / taxi_density)
         R_list = [0.2, 0.5, 1]
         geom_list = [0, 1, 2, 3, 6]
 

@@ -346,16 +346,16 @@ class Simulation:
             self.max_request_waiting_time = 10000
 
         if ("batch_size" in config) and ("max_time" in config):
-            self.num_iter = int(np.ceil(self.max_time/self.batch_size))
+            self.num_iter = int(np.ceil(self.max_time / self.batch_size))
         else:
             self.num_iter = None
 
-        if "behaviour" in config: # goback / stay / cruise
+        if "behaviour" in config:  # goback / stay / cruise
             self.behaviour = config["behaviour"]
         else:
             self.behaviour = "go_back"
 
-        if "initial_conditions" in config: # base / home
+        if "initial_conditions" in config:  # base / home
             self.initial_conditions = config["initial_conditions"]
         else:
             self.initial_conditions = "base"
@@ -363,7 +363,7 @@ class Simulation:
         if "reset_time" in config:
             self.reset_time = config["reset_time"]
         else:
-            self.reset_time = self.max_time +1
+            self.reset_time = self.max_time + 1
 
         # initializing counters
         self.latest_taxi_id = 0
@@ -388,7 +388,7 @@ class Simulation:
         # city layout
         self.city = City(**config)
         # length of pregenerated random number storage
-        self.city.length = int(min(self.max_time*self.request_rate, 1e6))
+        self.city.length = int(min(self.max_time * self.request_rate, 1e6))
 
         # whether to log all movements for debugging purposes
         self.log = config["log"]
@@ -482,8 +482,6 @@ class Simulation:
         # increase counter
         self.latest_request_id += 1
 
-
-
     def go_to_base(self, taxi_id, bcoords):
         """
         This function sends the taxi to the base rom wherever it is.
@@ -563,7 +561,7 @@ class Simulation:
 
         # create new path: to user, then to destination
         path = self.city.create_path([t.x, t.y], [r.ox, r.oy]) + \
-            self.city.create_path([r.ox, r.oy], [r.dx, r.dy])[1:]
+               self.city.create_path([r.ox, r.oy], [r.dx, r.dy])[1:]
         t.next_destination.extend(path)
 
         # remove request from the pending ones, label it as "in progress"
@@ -670,9 +668,10 @@ class Simulation:
                 # fetch request
                 r = self.requests[request_id]
                 # find nearest vehicles in a radius
-                possible_taxi_ids = self.city.find_nearest_available_taxis(self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
-                                                                      mode="circle",
-                                                                      radius=self.city.hard_limit)
+                possible_taxi_ids = self.city.find_nearest_available_taxis(
+                    self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                    mode="circle",
+                    radius=self.city.hard_limit)
                 hit = 0
                 for t in ta_list:
                     if t in possible_taxi_ids:
@@ -680,7 +679,7 @@ class Simulation:
                         # make assignment
                         self.assign_request(request_id, t)
                         hit = 1
-                        pairs +=1
+                        pairs += 1
                         break
                 if not hit:
                     self.requests_pending_deque_temporary.append(request_id)
@@ -748,9 +747,9 @@ class Simulation:
             self.taxis_to_request.remove(r.taxi_id)
 
         # update taxi lists
-        if mode=="going_home":
+        if mode == "going_home":
             # (magic wand) Apparate taxi home!
-            t.x,t.y = t.home
+            t.x, t.y = t.home
 
         # update global availability containers
         self.taxis_available[r.taxi_id] = t
@@ -785,12 +784,12 @@ class Simulation:
 
         t = self.taxis[taxi_id]
 
-        price =\
-            len(t.requests_completed) * self.price_fixed +\
-            int(not t.available) * self.price_fixed +\
-            t.time_serving*self.price_per_dist -\
-            (t.time_cruising+t.time_serving+t.time_to_request)*self.cost_per_unit -\
-            (t.time_serving+t.time_cruising+t.time_to_request+t.time_waiting)*self.cost_per_time
+        price = \
+            len(t.requests_completed) * self.price_fixed + \
+            int(not t.available) * self.price_fixed + \
+            t.time_serving * self.price_per_dist - \
+            (t.time_cruising + t.time_serving + t.time_to_request) * self.cost_per_unit - \
+            (t.time_serving + t.time_cruising + t.time_to_request + t.time_waiting) * self.cost_per_time
 
         return price
 
@@ -820,7 +819,7 @@ class Simulation:
                 )
 
             # if the taxi has a path ahead of it, plot it
-            if len(t.next_destination)> 0:
+            if len(t.next_destination) > 0:
                 path = np.array([[t.x, t.y]] + list(t.next_destination))
                 if len(path) > 1:
                     xp, yp = path.T
@@ -937,10 +936,7 @@ class Simulation:
             where to save the results
         """
 
-        if 'results' not in os.listdir():
-            os.mkdir('results')
-
-        if data_path not in os.listdir('results'):
+        if not os.path.exists(data_path):
             os.mkdir(data_path)
 
         measurement = Measurements(self)
@@ -949,10 +945,10 @@ class Simulation:
             print("No batch run parameters were defined in the config file, please add them!")
             return
 
-        print("Running simulation with run_id "+run_id+".")
-        print("Batch time "+str(self.batch_size)+".")
-        print("Number of items "+str(self.num_iter)+".")
-        print("Total time simulated "+str(self.batch_size*self.num_iter)+".")
+        print("Running simulation with run_id " + run_id + ".")
+        print("Batch time " + str(self.batch_size) + ".")
+        print("Number of items " + str(self.num_iter) + ".")
+        print("Total time simulated " + str(self.batch_size * self.num_iter) + ".")
         print("Starting...")
 
         results = []
@@ -982,15 +978,13 @@ class Simulation:
             f.close()
             results.append(measurement.read_aggregated_metrics(ptm))
             time2 = time()
-            print('Simulation batch '+str(i+1)+'/'+str(self.num_iter)+' , %.2f sec/batch.' % (time2-time1))
+            print('Simulation batch ' + str(i + 1) + '/' + str(self.num_iter) + ' , %.2f sec/batch.' % (time2 - time1))
 
             time1 = time2
 
         # dumping batch results
-        f = open(data_path + '/run_' + run_id + '_aggregates.csv', 'w')
-        pd.DataFrame.from_dict(results).to_csv(f, float_format="%.4f")
-        f.write('\n')
-        f.close()
+        with open(data_path + '/run_' + run_id + '_aggregates.csv', 'w', newline='') as f:
+            pd.DataFrame.from_records(results).to_csv(f, float_format="%.4f")
 
         # dumping per request metrics out (only at the end)
         f = open(data_path + '/run_' + run_id + '_per_request_metrics.json', 'a')
@@ -1008,7 +1002,7 @@ class Simulation:
             f2.close()
             os.remove(data_path + '/run_' + run_id + file)
 
-        print("Done.\n")
+        print("Done.")
 
     def step_time(self, handler):
         """
@@ -1019,7 +1013,7 @@ class Simulation:
             print("\n")
             print("Timestamp " + str(self.time))
             print("Taxis:\n")
-            print("\t Available: "+str(len(self.taxis_available)))
+            print("\t Available: " + str(len(self.taxis_available)))
             print("\t To request: " + str(len(self.taxis_to_request)))
             print("\t To destination: " + str(len(self.taxis_to_destination)))
             print("\n")
@@ -1032,16 +1026,16 @@ class Simulation:
                     req_counter[r.mode] = 1
             print('Requests:')
             for mode in req_counter:
-                print('\t'+mode+': '+str(req_counter[mode]))
+                print('\t' + mode + ': ' + str(req_counter[mode]))
             print("\n")
             print("Requests pending: ")
-            print('\t',self.requests_pending)
-            print('\t',self.requests_pending_deque)
-            print('\t',self.requests_pending_deque_temporary)
+            print('\t', self.requests_pending)
+            print('\t', self.requests_pending_deque)
+            print('\t', self.requests_pending_deque_temporary)
             print("Requests in progress: ")
             print('\t', self.requests_in_progress)
             print("All requests: ")
-            print('\t',[(k,str(v)) for k,v in self.requests.items()])
+            print('\t', [(k, str(v)) for k, v in self.requests.items()])
         if (self.time > 0) and (self.time % self.reset_time == 0):
             # print("Going home!")
             self.go_home_everybody()
@@ -1084,7 +1078,7 @@ class Simulation:
         self.requests_pending_deque_temporary = deque()
         # delete old requests from pending ones
         if self.time > self.max_request_waiting_time and len(self.requests_pending_deque) > 0:
-            while len(self.requests_pending_deque)>0 and (self.requests_pending_deque[0] in self.requests_pending_deque_batch[0]):
+            while len(self.requests_pending_deque) > 0 and (self.requests_pending_deque[0] in self.requests_pending_deque_batch[0]):
                 request_id = self.requests_pending_deque.popleft()
                 self.requests[request_id].mode = 'dropped'
 
@@ -1169,12 +1163,12 @@ class Measurements:
         trip_std_length = []
         incomes = []
         trip_num_completed = []
-        
+
         time_serving = []
         time_to_request = []
         time_cruising = []
         time_waiting = []
-        
+
         position = []
 
         for taxi_id in self.simulation.taxis:
@@ -1187,8 +1181,8 @@ class Measurements:
                 req_lengths.append(length)
 
             if len(req_lengths) > 0:
-                trip_avg_length.append( round(np.nanmean(req_lengths), 4) )
-                trip_std_length.append( round(np.nanstd(req_lengths), 4) )
+                trip_avg_length.append(round(np.nanmean(req_lengths), 4))
+                trip_std_length.append(round(np.nanstd(req_lengths), 4))
             else:
                 trip_avg_length.append(0)
                 trip_std_length.append(np.nan)
@@ -1199,7 +1193,7 @@ class Measurements:
             w = taxi.time_waiting
             r = taxi.time_to_request
             c = taxi.time_cruising
-            
+
             time_serving.append(s)
             time_cruising.append(c)
             time_waiting.append(w)
@@ -1244,7 +1238,7 @@ class Measurements:
             r = self.simulation.requests[request_id]
             output_dict["requests"].append({
                 "request_id": r.request_id,
-                "origin" : (r.ox, r.oy),
+                "origin": (r.ox, r.oy),
                 "destination": (r.dx, r.dy),
                 "timestamp": r.timestamps["request"],
                 "assignment": r.timestamps["assigned"],
@@ -1261,11 +1255,10 @@ class Measurements:
 
         for k in per_taxi_metrics:
             if k[0:6] == 'trip_i':
-                metrics['avg_'+k] = np.nanmean(per_taxi_metrics[k])
+                metrics['avg_' + k] = np.nanmean(per_taxi_metrics[k])
                 metrics['std_' + k] = np.nanstd(per_taxi_metrics[k])
             elif k[0:4] == 'time':
                 metrics['avg_' + k] = np.nanmean(per_taxi_metrics[k])
                 metrics['std_' + k] = np.nanstd(per_taxi_metrics[k])
 
         return metrics
-    
