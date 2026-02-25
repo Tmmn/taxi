@@ -92,15 +92,21 @@ class Taxi:
             self.available = True
             self.to_request = False
             self.with_passenger = False
+            self.on_break = False
 
             self.actual_request_executing = None
             self.requests_completed = set()
 
             # types of time metrics to be stored
             self.time_waiting = 0
+            self.time_waiting_since_last_trip = 0
+            self.time_on_break = 0
+            self.time_on_break_current = 0
             self.time_serving = 0
             self.time_cruising = 0
             self.time_to_request = 0
+
+            self.work_time_at_last_break = 0
 
             # storing steps to take
             self.next_destination = deque()  # path to travel
@@ -365,6 +371,25 @@ class Simulation:
         else:
             self.reset_time = self.max_time + 1
 
+        # break parameters
+        if "break_after_work_time" in config:
+            # time threshold after which a taxi takes a mandatory break
+            self.break_after_work_time = config["break_after_work_time"]
+        else:
+            self.break_after_work_time = None  # no mandatory breaks
+
+        if "break_after_waiting_time" in config:
+            # time threshold after which a taxi takes a demotivation break
+            self.break_after_waiting_time = config["break_after_waiting_time"]
+        else:
+            self.break_after_waiting_time = None  # no demotivation breaks
+
+        if "break_duration" in config:
+            # how long the break lasts
+            self.break_duration = config["break_duration"]
+        else:
+            self.break_duration = 50  # default break duration
+
         # initializing counters
         self.latest_taxi_id = 0
         self.latest_request_id = 0
@@ -372,6 +397,7 @@ class Simulation:
         # initializing object storage
         self.taxis = RandomDict()
         self.taxis_available = RandomDict()
+        self.taxis_on_break = set()
         self.taxis_to_request = set()
         self.taxis_to_destination = set()
 
@@ -534,6 +560,100 @@ class Simulation:
     def cruise(self, taxi_id):
         return None
 
+    def put_taxi_on_break(self, taxi_id):
+        """
+        Put a taxi on break, making it unavailable for assignments.
+
+        Parameters
+        ----------
+        taxi_id : int
+            id of taxi to put on break
+        """
+        t = self.taxis[taxi_id]
+
+        # only available taxis can go on break
+        if not t.available or t.on_break:
+            return
+
+        # remove from available taxis
+        self.city.A[self.city.coordinate_dict_ij_to_c[t.x][t.y]].remove(taxi_id)
+        del self.taxis_available[taxi_id]
+
+        t.on_break = True
+        t.available = False
+        t.time_on_break_current = 0
+        t.work_time_at_last_break = t.time_serving + t.time_to_request + t.time_cruising
+
+        self.taxis_on_break.add(taxi_id)
+        self.taxis[taxi_id] = t
+
+        if self.log:
+            print(f"\tB taxi {taxi_id} going on break")
+
+    def return_taxi_from_break(self, taxi_id):
+        """
+        Return a taxi from break, making it available again.
+
+        Parameters
+        ----------
+        taxi_id : int
+            id of taxi to return from break
+        """
+        t = self.taxis[taxi_id]
+
+        # only taxis on break can return
+        if not t.on_break:
+            return
+
+        t.on_break = False
+        t.available = True
+        t.time_waiting_since_last_trip = 0
+
+        self.taxis_on_break.remove(taxi_id)
+        self.taxis_available[taxi_id] = t
+        self.city.A[self.city.coordinate_dict_ij_to_c[t.x][t.y]].add(taxi_id)
+
+        self.taxis[taxi_id] = t
+
+        if self.log:
+            print(f"\tB taxi {taxi_id} returning from break")
+
+    def check_and_manage_breaks(self):
+        """
+        Check if any taxis should go on break or return from break.
+
+        This checks two conditions:
+        1. Mandatory break after working for break_after_work_time
+        2. Demotivation break after waiting for break_after_waiting_time
+        """
+        # Check if taxis should return from break
+        for taxi_id in list(self.taxis_on_break):
+            t = self.taxis[taxi_id]
+            if t.time_on_break_current >= self.break_duration:
+                self.return_taxi_from_break(taxi_id)
+
+        # Check if available taxis should go on break
+        for taxi_id in list(self.taxis_available.keys):
+            t = self.taxis[taxi_id]
+
+            # Calculate total work time (serving + to_request + cruising)
+            work_time = t.time_serving + t.time_to_request + t.time_cruising
+
+            # Calculate work time since last break
+            work_time_since_last_break = work_time - t.work_time_at_last_break
+
+            # Mandatory break after working too long since last break
+            if self.break_after_work_time is not None:
+                if work_time_since_last_break >= self.break_after_work_time:
+                    self.put_taxi_on_break(taxi_id)
+                    continue
+
+            # Demotivation break after waiting too long
+            if self.break_after_waiting_time is not None:
+                if t.time_waiting_since_last_trip >= self.break_after_waiting_time:
+                    self.put_taxi_on_break(taxi_id)
+                    continue
+
     def assign_request(self, request_id, taxi_id):
         """
         Given a request_id, taxi_id pair, this function makes the match.
@@ -552,6 +672,9 @@ class Simulation:
         t.with_passenger = False
         t.available = False
         t.to_request = True
+
+        # reset waiting time since last trip (got a new assignment)
+        t.time_waiting_since_last_trip = 0
 
         # mark taxi as moving to request
         self.taxis_to_request.add(taxi_id)
@@ -918,7 +1041,13 @@ class Simulation:
             if self.log:
                 print("\tF moved taxi " + str(taxi_id) + " remaining path ", list(t.next_destination), "\n", end="")
         except:
-            t.time_waiting += 1
+            if not t.on_break:
+                t.time_waiting += 1
+                if t.available:
+                    t.time_waiting_since_last_trip += 1
+            else:
+                t.time_on_break += 1
+                t.time_on_break_current += 1
 
         self.taxis[taxi_id] = t
 
@@ -1069,6 +1198,10 @@ class Simulation:
                             pass
                         elif self.behaviour == "cruise":
                             self.cruise(taxi_id)
+
+        # check and manage taxi breaks
+        self.check_and_manage_breaks()
+
         # make matchings
         self.matching_algorithm(mode=self.matching)
 

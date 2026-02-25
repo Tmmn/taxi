@@ -57,6 +57,9 @@ The basic parameters for each simulation are stored in the `*.conf` files of the
   "matching": "levelling2_random_user_nearest_poorest_taxi_w_waiting_limit", # matching algorithm
   "R": 1, # request-to-taxi ratio
   "d": 200, # taxi density
+  "break_after_work_time": 1440, # after how much time driving, cruising, waiting a taxi will take a break
+  "break_after_waiting_time": 360, # after how much time waiting a taxi will take a break
+  "break_duration": 90, # break duration in simulation time units 1 tu = 10 sec
   "request_destination_distributions": [ # similar to origin distributions
     {
       "location": [
