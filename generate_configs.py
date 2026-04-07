@@ -130,7 +130,7 @@ class ConfigGenerator:
 
         conf['request_rate'] = llambda
 
-        if type(alg) == int:
+        if isinstance(alg, int):
             conf['matching'] = self.alg_list[alg]
         else:
             conf["matching"] = alg
@@ -142,6 +142,22 @@ class ConfigGenerator:
             conf.update({"reset_time": g.reset_time})
         else:
             conf.pop("reset_time", None)
+
+        # Add break-related parameters if not already in base config
+        if "break_after_work_time" not in conf:
+            conf["break_after_work_time"] = 1440  # 4 hours: mandatory break after work
+        if "break_after_waiting_time" not in conf:
+            conf["break_after_waiting_time"] = 360  # 1 hour: demotivation break after waiting
+        if "break_duration" not in conf:
+            conf["break_duration"] = 90  # 15 minutes: duration of each break
+
+        # Add safety score parameters if not already in base config
+        if "safety_score_change_serving_rate" not in conf:
+            conf["safety_score_change_serving_rate"] = -0.02  # per step while assigned (to_request or with_passenger)
+        if "safety_score_change_waiting_rate" not in conf:
+            conf["safety_score_change_waiting_rate"] = 0  # per step while unassigned and not on break
+        if "safety_score_change_break_rate" not in conf:
+            conf["safety_score_change_break_rate"] = 0.5  # per step while on break
 
         return conf
 
@@ -180,7 +196,8 @@ class ConfigGenerator:
 
 
 if __name__ == '__main__':
-    supported_modes = ["sweep", "long_run", "new_geoms", "multiple_runs", "figure2", "missing", "passenger_fairness"]
+    supported_modes = ["sweep", "long_run", "new_geoms", "multiple_runs", "figure2", "missing", "simple",
+                       "passenger_fairness"]
     if len(sys.argv) < 2 or sys.argv[1] not in supported_modes:
         print(f"Please give a mode argument: {', '.join(supported_modes)}")
         sys.exit(1)
@@ -423,3 +440,39 @@ if __name__ == '__main__':
                 f.write(content)
                 f.close()
                 print("Successfully wrote " + fname + '!')
+
+    elif mode == "simple":
+        # Simple mode: creates a single config file with default parameters
+        # Usage: python generate_configs.py simple <base_config> [days] [geom]
+
+        if len(sys.argv) < 3:
+            print("Usage: python generate_configs.py simple <base_config> [days] [geom]")
+            print("Example: python generate_configs.py simple 2019_05_06_base.conf 5 10")
+            print("Defaults: days=1, geom=0, d=225, R=0.5, algorithm=nearest, behavior=stay")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        days = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+        geom = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+
+        gen = ConfigGenerator(base_config, days=days)
+        # Generate with default parameters: d=225, R=0.5, nearest algorithm, stay behavior
+        conf = gen.generate_config(225, 0.5, 'nearest', geom, 1)
+
+        if conf is not None:
+            fname, content = gen.dump_config(conf)
+            # Append days to filename for clarity
+            fname = fname.split('.')[0] + f'_{days}days.conf'
+            f = open('configs/' + fname, 'w')
+            f.write(content)
+            f.close()
+            print(f"✓ Successfully wrote {fname}")
+            print(f"  Simulation duration: {days} days")
+            print(f"  Taxi density (d): 225")
+            print(f"  Demand ratio (R): 0.5")
+            print(f"  Algorithm: nearest")
+            print(f"  Geometry: {geom}")
+            print(f"  Behavior: stay")
+        else:
+            print("Failed to generate config")
+            sys.exit(1)

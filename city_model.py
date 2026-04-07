@@ -27,57 +27,60 @@ from geometry import City
 
 class Taxi:
     """
-   Represents a taxi in the simulation.
+    Represents a taxi in the simulation.
 
-   Attributes
-   ----------
+    Attributes
+    ----------
 
-   x : int
-       horizontal grid coordinate
+    x : int
+        horizontal grid coordinate
 
-   y : int
-       vertical grid coordinate
+    y : int
+        vertical grid coordinate
 
-   taxi_id : int
-       unique identifier of taxi
+    taxi_id : int
+        unique identifier of taxi
 
-   available : bool
-       flag that stores whether taxi is free
+    available : bool
+        flag that stores whether taxi is free
 
-   to_request : bool
-       flag that stores when taxi is moving towards a request
-       but there is still no user sitting in it
+    to_request : bool
+        flag that stores when taxi is moving towards a request
+        but there is still no user sitting in it
 
-   with_passenger : bool
-       flag that stores when taxi is carrying a passenger
+    with_passenger : bool
+        flag that stores when taxi is carrying a passenger
 
-   actual_request_executing : int
-       id of request that is being executed by the taxi
+    actual_request_executing : int
+        id of request that is being executed by the taxi
 
-   requests_completed : list of ints
-       list of requests completed by taxi
+    requests_completed : list of ints
+        list of requests completed by taxi
 
-   time_waiting : int
-       time spent with empty waiting
+    time_waiting : int
+        time spent with empty waiting
 
-   time_serving : int
-       time spent with carrying a passenger
+    time_serving : int
+        time spent with carrying a passenger
 
-   time_to_request : int
-       time spent from call assignment to pickup, without a passenger
+    time_to_request : int
+        time spent from call assignment to pickup, without a passenger
 
-   time_cruising : int
-       time spent with travelling empty with no assigned requests
+    time_cruising : int
+        time spent with travelling empty with no assigned requests
 
-   next_destination : Queue
-       Queue that stores the path forward of the taxi
+    next_destination : Queue
+        Queue that stores the path forward of the taxi
 
-   home : tuple
-        if config setting is "initial_conditions":"random", then this will be the home of the taxi instead of the base
+    safety_score : float
+        score that measures safety of taxi driver at point in time
+
+    home : tuple
+         if config setting is "initial_conditions":"random", then this will be the home of the taxi instead of the base
 
    """
 
-    def __init__(self, coords=None, taxi_id=None):
+    def __init__(self, coords=None, taxi_id=None, safety_score=None):
         if coords is None:
             print("You have to put your taxi somewhere in the city!")
         elif taxi_id is None:
@@ -107,6 +110,12 @@ class Taxi:
             self.time_to_request = 0
 
             self.work_time_at_last_break = 0
+
+            # safety score starts variable across taxis; bounds are managed by Simulation
+            if safety_score is None:
+                self.safety_score = float(100)
+            else:
+                self.safety_score = float(safety_score)
 
             # storing steps to take
             self.next_destination = deque()  # path to travel
@@ -205,6 +214,11 @@ class Request:
             }
 
             self.mode = 'pending'
+            self.driver_safety_score_start = None
+            self.driver_safety_score_end = None
+            self.safety_score_sum = 0.0
+            self.safety_score_count = 0
+            self.average_safety_score = None
 
     def __str__(self):
         """
@@ -373,22 +387,82 @@ class Simulation:
 
         # break parameters
         if "break_after_work_time" in config:
-            # time threshold after which a taxi takes a mandatory break
+            # time threshold after which a taxi takes a mandatory break; 0 disables this mechanism
             self.break_after_work_time = config["break_after_work_time"]
+            if self.break_after_work_time == 0:
+                self.break_after_work_time = None
         else:
-            self.break_after_work_time = None  # no mandatory breaks
+            self.break_after_work_time = None  # disabled by default
 
         if "break_after_waiting_time" in config:
-            # time threshold after which a taxi takes a demotivation break
+            # time threshold after which a taxi takes a demotivation break; 0 disables this mechanism
             self.break_after_waiting_time = config["break_after_waiting_time"]
+            if self.break_after_waiting_time == 0:
+                self.break_after_waiting_time = None
         else:
-            self.break_after_waiting_time = None  # no demotivation breaks
+            self.break_after_waiting_time = None  # disabled by default
 
         if "break_duration" in config:
-            # how long the break lasts
+            # how long the break lasts; 0 disables break mechanics
             self.break_duration = config["break_duration"]
+            if self.break_duration == 0:
+                self.break_duration = None
         else:
-            self.break_duration = 50  # default break duration
+            self.break_duration = None  # disabled by default
+
+        # safety score parameters (signed deltas per simulation step)
+        if "safety_score_change_serving_rate" in config:
+            # applied while taxi is assigned to a request (to pickup or with passenger)
+            self.safety_score_change_serving_rate = float(config["safety_score_change_serving_rate"])
+        else:
+            self.safety_score_change_serving_rate = -0.02
+
+        if "safety_score_change_waiting_rate" in config:
+            # applied while taxi is not assigned to a request and not on break
+            self.safety_score_change_waiting_rate = float(config["safety_score_change_waiting_rate"])
+        else:
+            self.safety_score_change_waiting_rate = -0.001
+
+        if "safety_score_change_break_rate" in config:
+            # applied while taxi is on break
+            self.safety_score_change_break_rate = float(config["safety_score_change_break_rate"])
+        elif "safety_score_increase_rate" in config:
+            # backward compatibility with older config naming
+            self.safety_score_change_break_rate = float(config["safety_score_increase_rate"])
+        else:
+            self.safety_score_change_break_rate = 0.5
+
+        if "safety_score_min" in config:
+            # minimum safety score (cannot go below this)
+            self.safety_score_min = config["safety_score_min"]
+        else:
+            self.safety_score_min = 0
+
+        if "safety_score_max" in config:
+            # maximum safety score (cannot go above this)
+            self.safety_score_max = config["safety_score_max"]
+        else:
+            self.safety_score_max = 100
+
+        # bounds for initial safety score sampling at taxi creation
+        if "initial_safety_score_min" in config:
+            self.initial_safety_score_min = float(config["initial_safety_score_min"])
+        else:
+            self.initial_safety_score_min = float(self.safety_score_min)
+
+        if "initial_safety_score_max" in config:
+            self.initial_safety_score_max = float(config["initial_safety_score_max"])
+        else:
+            self.initial_safety_score_max = float(self.safety_score_max)
+
+        if self.initial_safety_score_min < self.safety_score_min or self.initial_safety_score_max > self.safety_score_max:
+            raise ValueError(
+                "Initial safety score bounds must be within [safety_score_min, safety_score_max]."
+            )
+        if self.initial_safety_score_min > self.initial_safety_score_max:
+            raise ValueError(
+                "initial_safety_score_min must be less than or equal to initial_safety_score_max."
+            )
 
         # initializing counters
         self.latest_taxi_id = 0
@@ -469,13 +543,14 @@ class Simulation:
 
         # adding home coordinates, starting taxi
         home = self.city.create_taxi_home_coords()
+        initial_safety = np.random.uniform(self.initial_safety_score_min, self.initial_safety_score_max)
 
         if self.initial_conditions == "base":
             # create a taxi at the base
-            tx = Taxi(self.city.base_coords, self.latest_taxi_id)
+            tx = Taxi(self.city.base_coords, self.latest_taxi_id, safety_score=initial_safety)
         elif self.initial_conditions == "home":
             # create a taxi at home
-            tx = Taxi(home, self.latest_taxi_id)
+            tx = Taxi(home, self.latest_taxi_id, safety_score=initial_safety)
         tx.home = home
 
         # add to taxi storage
@@ -581,6 +656,8 @@ class Simulation:
 
         t.on_break = True
         t.available = False
+        # A taxi on break must not continue any previously queued route.
+        t.next_destination = deque()
         t.time_on_break_current = 0
         t.work_time_at_last_break = t.time_serving + t.time_to_request + t.time_cruising
 
@@ -626,6 +703,14 @@ class Simulation:
         1. Mandatory break after working for break_after_work_time
         2. Demotivation break after waiting for break_after_waiting_time
         """
+        # If breaks are disabled, keep taxis operating normally.
+        breaks_enabled = (
+            self.break_duration is not None and
+            (self.break_after_work_time is not None or self.break_after_waiting_time is not None)
+        )
+        if not breaks_enabled:
+            return
+
         # Check if taxis should return from break
         for taxi_id in list(self.taxis_on_break):
             t = self.taxis[taxi_id]
@@ -691,6 +776,7 @@ class Simulation:
         self.requests_in_progress.add(request_id)
         r.mode = 'waiting'
         r.timestamps['assigned'] = self.time
+        r.driver_safety_score_start = float(t.safety_score)
 
         # update taxi state in taxi storage
         self.taxis[taxi_id] = t
@@ -851,10 +937,16 @@ class Simulation:
         r = self.requests[request_id]
         t = self.taxis[r.taxi_id]
 
+        if r.safety_score_count > 0:
+            r.average_safety_score = r.safety_score_sum / r.safety_score_count
+        else:
+            r.average_safety_score = None
+
         if mode == "simple" or mode == "going_home":
             # mark request as done
             r.timestamps['dropoff'] = self.time
             r.mode = 'done'
+            r.driver_safety_score_end = float(t.safety_score)
             self.requests_in_progress.remove(request_id)
             t.requests_completed.add(request_id)
             # remove taxi from to_destination list
@@ -862,6 +954,7 @@ class Simulation:
         elif mode == "cancel":
             # mark request as dropped
             r.mode = 'dropped'
+            r.driver_safety_score_end = float(t.safety_score)
             # remove request from progressing ones
             self.requests_in_progress.remove(request_id)
             # clear taxi path
@@ -1005,9 +1098,9 @@ class Simulation:
     def move_taxi(self, taxi_id):
         """
         Move a taxi one step forward according to its path queue.
-        
+
         Update taxi position on availablity grid, if necessary.
-        
+
         Parameters
         ----------
         plt.ion()
@@ -1016,8 +1109,16 @@ class Simulation:
         """
         t = self.taxis[taxi_id]
 
+        if t.on_break:
+            t.time_on_break += 1
+            t.time_on_break_current += 1
+            delta = self.safety_score_change_break_rate
+            t.safety_score = min(self.safety_score_max, max(self.safety_score_min, t.safety_score + delta))
+            self.taxis[taxi_id] = t
+            return
+
         try:
-            # move taxi one step forward    
+            # move taxi one step forward
             move = t.next_destination.popleft()
 
             old_x = t.x
@@ -1040,14 +1141,18 @@ class Simulation:
                 self.city.A[self.city.coordinate_dict_ij_to_c[t.x][t.y]].add(taxi_id)
             if self.log:
                 print("\tF moved taxi " + str(taxi_id) + " remaining path ", list(t.next_destination), "\n", end="")
-        except:
-            if not t.on_break:
-                t.time_waiting += 1
-                if t.available:
-                    t.time_waiting_since_last_trip += 1
-            else:
-                t.time_on_break += 1
-                t.time_on_break_current += 1
+        except IndexError:
+            t.time_waiting += 1
+            if t.available:
+                t.time_waiting_since_last_trip += 1
+
+        # waiting = not assigned to request (neither to pickup nor with passenger)
+        if t.to_request or t.with_passenger:
+            delta = self.safety_score_change_serving_rate
+        else:
+            delta = self.safety_score_change_waiting_rate
+
+        t.safety_score = min(self.safety_score_max, max(self.safety_score_min, t.safety_score + delta))
 
         self.taxis[taxi_id] = t
 
@@ -1174,6 +1279,13 @@ class Simulation:
                 self.move_taxi(taxi_id)
 
                 t = self.taxis[taxi_id]
+
+                if t.actual_request_executing is not None and not t.available:
+                    r = self.requests.get(t.actual_request_executing)
+                    if r is not None:
+                        r.safety_score_sum += float(t.safety_score)
+                        r.safety_score_count += 1
+                        self.requests[r.request_id] = r
 
                 # if a taxi can pick up its passenger, do it
                 if taxi_id in self.taxis_to_request:
@@ -1303,6 +1415,7 @@ class Measurements:
         time_waiting = []
 
         position = []
+        safety_scores = []
 
         for taxi_id in self.simulation.taxis:
             taxi = self.simulation.taxis[taxi_id]
@@ -1333,6 +1446,7 @@ class Measurements:
             time_to_request.append(r)
 
             position.append([int(taxi.x), int(taxi.y)])
+            safety_scores.append(round(taxi.safety_score, 4))
 
         return {
             "timestamp": self.simulation.time,
@@ -1344,7 +1458,8 @@ class Measurements:
             "time_cruising": time_cruising,
             "time_waiting": time_waiting,
             "time_to_request": time_to_request,
-            "position": position
+            "position": position,
+            "safety_score": safety_scores
         }
 
     def read_per_request_metrics(self):
@@ -1373,10 +1488,14 @@ class Measurements:
                 "request_id": r.request_id,
                 "origin": (r.ox, r.oy),
                 "destination": (r.dx, r.dy),
+                "taxi_id": r.taxi_id,
                 "timestamp": r.timestamps["request"],
                 "assignment": r.timestamps["assigned"],
                 "pickup": r.timestamps["pickup"],
-                "dropoff": r.timestamps["dropoff"]
+                "dropoff": r.timestamps["dropoff"],
+                "driver_safety_score_start": getattr(r, "driver_safety_score_start", None),
+                "driver_safety_score_end": getattr(r, "driver_safety_score_end", None),
+                "driver_average_safety_score": getattr(r, "average_safety_score", None)
             })
 
         return output_dict
