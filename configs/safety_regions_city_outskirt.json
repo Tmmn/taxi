@@ -1,0 +1,80 @@
+{
+  "grid": {
+    "n": 100,
+    "m": 100
+  },
+  "regions": [
+    {
+      "id": "north_west",
+      "name": "North-West",
+      "x_min": 0,
+      "x_max": 24,
+      "y_min": 75,
+      "y_max": 99
+    },
+    {
+      "id": "north_middle",
+      "name": "North-Middle",
+      "x_min": 25,
+      "x_max": 74,
+      "y_min": 75,
+      "y_max": 99
+    },
+    {
+      "id": "north_east",
+      "name": "North-East",
+      "x_min": 75,
+      "x_max": 99,
+      "y_min": 75,
+      "y_max": 99
+    },
+    {
+      "id": "middle_west",
+      "name": "Middle-West",
+      "x_min": 0,
+      "x_max": 24,
+      "y_min": 25,
+      "y_max": 74
+    },
+    {
+      "id": "middle_middle",
+      "name": "Middle-Middle",
+      "x_min": 25,
+      "x_max": 74,
+      "y_min": 25,
+      "y_max": 74
+    },
+    {
+      "id": "middle_east",
+      "name": "Middle-East",
+      "x_min": 75,
+      "x_max": 99,
+      "y_min": 25,
+      "y_max": 74
+    },
+    {
+      "id": "south_west",
+      "name": "South-West",
+      "x_min": 0,
+      "x_max": 24,
+      "y_min": 0,
+      "y_max": 24
+    },
+    {
+      "id": "south_middle",
+      "name": "South-Middle",
+      "x_min": 25,
+      "x_max": 74,
+      "y_min": 0,
+      "y_max": 24
+    },
+    {
+      "id": "south_east",
+      "name": "South-East",
+      "x_min": 75,
+      "x_max": 99,
+      "y_min": 0,
+      "y_max": 24
+    }
+  ]
+}
