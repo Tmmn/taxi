@@ -616,6 +616,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pip"
+version = "24.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/b1/b422acd212ad7eedddaf7981eee6e5de085154ff726459cf2da7c5a184c1/pip-24.3.1.tar.gz", hash = "sha256:ebcb60557f2aefabc2e0f918751cd24ea0d56d8ec5445fe1807f1d2109660b99", size = 1931073, upload-time = "2024-10-27T18:35:56.354Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl", hash = "sha256:3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed", size = 1822182, upload-time = "2024-10-27T18:35:53.067Z" },
+]
+
+[[package]]
 name = "platformdirs"
 version = "4.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -936,6 +945,7 @@ dependencies = [
     { name = "ipywidgets" },
     { name = "pandas" },
     { name = "pandas-stubs" },
+    { name = "pip" },
     { name = "pyspark" },
     { name = "scipy" },
     { name = "scipy-stubs" },
@@ -950,6 +960,7 @@ requires-dist = [
     { name = "ipywidgets", specifier = ">=8.1.8" },
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pandas-stubs", specifier = ">=2.3.3" },
+    { name = "pip", specifier = "==24.3.1" },
     { name = "pyspark", specifier = ">=4.1.1" },
     { name = "scipy", specifier = ">=1.17.1" },
     { name = "scipy-stubs", specifier = ">=1.17.1.3" },
