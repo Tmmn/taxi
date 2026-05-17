@@ -363,13 +363,13 @@ def check_and_manage_breaks(sim: Simulation) -> None:
             sim.taxis[taxi_id] = t
 
     # loop taxis on break
-    for taxi_id in sim.taxis_on_break.copy():
+    for taxi_id in list(sim.taxis_on_break):
         t: Taxi = sim.taxis[taxi_id]
         if t.scheduled_return_time_tu is not None and sim.time >= t.scheduled_return_time_tu:
             return_taxi_from_break(sim, t)
 
     # loop available taxis
-    for taxi_id in sim.taxis_available.keys().copy():
+    for taxi_id in list(sim.taxis_available.keys):
         t: Taxi = sim.taxis[taxi_id]
 
         total_work_time = t.time_serving + t.time_to_request + t.time_cruising + t.time_waiting
