@@ -10,27 +10,30 @@ scoring.
 
 - Taxis move on an `n × m` square grid at one cell per time unit (TU).
 - **1 TU = 10 seconds** (grid spacing 100 m, speed 10 m/s).
-- Requests are generated each step with rate `request_rate` (possibly regulated by a time-of-day schedule). Origins and destinations are sampled from configurable mixtures of 2-D Gaussians, not uniformly, to model spatial demand patterns.
-- A matching algorithm pairs pending requests to available taxis. If matched, the taxi travels to the origin (pickup), then to the destination (dropoff).
+- Requests are generated each step with rate `request_rate` (possibly regulated by a time-of-day schedule). Origins and
+  destinations are sampled from configurable mixtures of 2-D Gaussians, not uniformly, to model spatial demand patterns.
+- A matching algorithm pairs pending requests to available taxis. If matched, the taxi travels to the origin (pickup),
+  then to the destination (dropoff).
 - Requests that have waited longer than `max_request_waiting_time` TU are dropped.
-- After dropoff, the taxi either stays at the dropoff location (`stay`) or returns to base (`go_back`), depending on `behaviour`. (`cruise` behavior is planned but not yet implemented.)
+- After dropoff, the taxi either stays at the dropoff location (`stay`) or returns to base (`go_back`), depending on
+  `behaviour`. (`cruise` behavior is planned but not yet implemented.)
 
 ---
 
 ## Matching algorithms
 
-| config `matching` value  | Description                                                                                                                                                                                                                                     |
-|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `nearest`                | Assign the nearest available taxi within `hard_limit`.                                                                                                                                                                                          |
-| `nearest_distance_pref`  | Nearest matching; taxis probabilistically decline based on route-length preference. Declines are tracked per request so declined taxis are skipped on retry.                                                                                    |
-| `nearest_region_pref`    | Nearest matching; acceptance probability is proportional to the region popularity score of the request origin/destination.                                                                                                                      |
-| `nearest_passenger_pref` | Passenger preference scoring: all taxis in radius are scored by proximity, safety, and pickup wait. The best-scoring taxi is accepted with a sigmoid probability whose threshold decays with waiting time — every passenger eventually accepts. |
-| `nearest_two_sided_dist_pass_pref`   | Two-sided matching: driver route-length preference checked first (permanent per-request decline); then passenger preference score checked. Passenger rejections are not permanent — threshold relaxes over time.    |
-| `nearest_two_sided_region_pass_pref` | Two-sided matching: driver region popularity preference checked first (permanent per-request decline); then passenger preference score checked. Requires a `regions` config block. |
-| `safety_objective`       | Objective safety-optimal baseline: sorts regions by ascending avg safety score of available taxis at pickup (least-safe region first), then within each region serves the oldest request first, always assigning the globally most-safe available taxi. No preferences applied. Requires a `regions` config block for region-aware ordering; falls back to global arrival-order otherwise. |
-| `poorest`                | Assign the taxi with the lowest cumulative income within `hard_limit`.                                                                                                                                                                          |
-| `random_limited`         | Random taxi within `hard_limit`.                                                                                                                                                                                                                |
-| `random_unlimited`       | Fully random taxi from the entire grid.                                                                                                                                                                                                         |
+| config `matching` value              | Description                                                                                                                                                                                                                                                                                                                                                                                |
+|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `nearest`                            | Assign the nearest available taxi within `hard_limit`.                                                                                                                                                                                                                                                                                                                                     |
+| `nearest_distance_pref`              | Nearest matching; taxis probabilistically decline based on route-length preference. Declines are tracked per request so declined taxis are skipped on retry.                                                                                                                                                                                                                               |
+| `nearest_region_pref`                | Nearest matching; acceptance probability is proportional to the region popularity score of the request origin/destination.                                                                                                                                                                                                                                                                 |
+| `nearest_passenger_pref`             | Passenger preference scoring: all taxis in radius are scored by proximity, safety, and pickup wait. The best-scoring taxi is accepted with a sigmoid probability whose threshold decays with waiting time — every passenger eventually accepts.                                                                                                                                            |
+| `nearest_two_sided_dist_pass_pref`   | Two-sided matching: driver route-length preference checked first (permanent per-request decline); then passenger preference score checked. Passenger rejections are not permanent — threshold relaxes over time.                                                                                                                                                                           |
+| `nearest_two_sided_region_pass_pref` | Two-sided matching: driver region popularity preference checked first (permanent per-request decline); then passenger preference score checked. Requires a `regions` config block.                                                                                                                                                                                                         |
+| `safety_objective`                   | Objective safety-optimal baseline: sorts regions by ascending avg safety score of available taxis at pickup (least-safe region first), then within each region serves the oldest request first, always assigning the globally most-safe available taxi. No preferences applied. Requires a `regions` config block for region-aware ordering; falls back to global arrival-order otherwise. |
+| `poorest`                            | Assign the taxi with the lowest cumulative income within `hard_limit`.                                                                                                                                                                                                                                                                                                                     |
+| `random_limited`                     | Random taxi within `hard_limit`.                                                                                                                                                                                                                                                                                                                                                           |
+| `random_unlimited`                   | Fully random taxi from the entire grid.                                                                                                                                                                                                                                                                                                                                                    |
 
 ---
 
@@ -144,8 +147,8 @@ reference.
 
 ### Time-of-day request rate schedule
 
-Multiplies `request_rate` by a window-specific factor to model rush hours and night-time lulls. Windows must be
-non-overlapping; any time-of-day not covered uses a multiplier of 1.0.
+Multiplies `request_rate` by a window-specific factor to model morning/evening rush hours and nighttime rest. 
+Windows must be non-overlapping; any time-of-day not covered uses a multiplier of 1.0.
 
 ```json
 {
@@ -231,10 +234,15 @@ also becomes the personal recovery ceiling (inherent safety) .
 
 ### Driver satisfaction score
 
-Each taxi also maintains a `satisfaction_score ∈ [satisfaction_score_min, satisfaction_score_max]`. It changes at three events:
+Each taxi also maintains a `satisfaction_score ∈ [satisfaction_score_min, satisfaction_score_max]`. It changes at three
+events:
 
 - **Each TU while waiting**: `+= satisfaction_change_waiting_rate` (typically negative).
-- **At assignment**: `+= satisfaction_pref_match_delta` if the trip's Manhattan length matches the driver's `route_length_pref` profile (`short_pref`, `neutral_pref`, `long_pref`), otherwise `+= satisfaction_pref_mismatch_delta`. This fires for **every matching algorithm** regardless of what criterion the algorithm used to accept the match — route-length satisfaction is a property of the driver, not of the algorithm. `neutral_pref` drivers always count as matched.
+- **At assignment**: `+= satisfaction_pref_match_delta` if the trip's Manhattan length matches the driver's
+  `route_length_pref` profile (`short_pref`, `neutral_pref`, `long_pref`), otherwise
+  `+= satisfaction_pref_mismatch_delta`. This fires for **every matching algorithm** regardless of what criterion the
+  algorithm used to accept the match — route-length satisfaction is a property of the driver, not of the algorithm.
+  `neutral_pref` drivers always count as matched.
 - **At dropoff**: `+= satisfaction_income_weight × tanh(trip_income / satisfaction_income_ref)`.
 
 ```json
@@ -437,7 +445,8 @@ End-of-shift breaks can be deferred during rush hours to keep supply available:
 ### Passenger preferences
 
 Every request is assigned preference attributes at creation time, drawn from configurable distributions. These
-attributes drive the `nearest_passenger_pref`, `nearest_two_sided_dist_pass_pref`, and `nearest_two_sided_region_pass_pref` matching algorithms.
+attributes drive the `nearest_passenger_pref`, `nearest_two_sided_dist_pass_pref`, and
+`nearest_two_sided_region_pass_pref` matching algorithms.
 
 #### Passenger type mix
 
@@ -523,12 +532,12 @@ any positively-scoring taxi.
 When a request is dropped (patience expired), its `cancellation_reason` records why it failed to match in the last
 attempt:
 
-| Value                | Meaning                                                                                   |
-|----------------------|-------------------------------------------------------------------------------------------|
-| `patience_exceeded`  | Request was never attempted (no taxis available globally) or expired naturally.           |
-| `no_taxi_available`  | Taxis exist in the fleet but none were within `hard_limit` at the last match attempt.     |
+| Value                | Meaning                                                                                                                                      |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `patience_exceeded`  | Request was never attempted (no taxis available globally) or expired naturally.                                                              |
+| `no_taxi_available`  | Taxis exist in the fleet but none were within `hard_limit` at the last match attempt.                                                        |
 | `driver_declined`    | Taxis were in range but all declined due to driver preferences (`nearest_two_sided_dist_pass_pref` or `nearest_two_sided_region_pass_pref`). |
-| `passenger_declined` | Willing taxis were available but the passenger score was too low.                         |
+| `passenger_declined` | Willing taxis were available but the passenger score was too low.                                                                            |
 
 ---
 
@@ -583,19 +592,30 @@ python generate_configs.py <mode> [arguments]
 
 Supported modes:
 
-| Mode                 | Description                                                                                                                                          |
-|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `simple`             | Single config with default parameters. `simple <base> [days] [geom]`                                                                                 |
-| `sweep`              | Full grid over all geometries, behaviours, R, d, and algorithms. `sweep <base>`                                                                      |
-| `passenger_pref`     | Sweeps R=[0.2, 0.5, 1.0] for `nearest`, `nearest_passenger_pref`, `nearest_two_sided_dist_pass_pref`, and `nearest_two_sided_region_pass_pref`. `passenger_pref <base> [days] [geom] [max_declines]` |
-| `region_pref`        | Sweeps R for `nearest_region_pref` with a given regions file. `region_pref <base> <regions_file> [days] [geom] [max_declines]`                       |
-| `distance_pref`      | Sweeps R=[0.2, 0.5, 1.0] for `nearest_distance_pref` across all behaviour types. `distance_pref <base> [days] [geom] [max_declines]`                |
-| `two_sided`          | Sweeps R for a chosen two-sided algorithm. `two_sided <base> <dist\|region> [days] [geom] [max_declines]`                                           |
-| `safety_objective`   | Sweeps R=[0.2, 0.5, 1.0] for `safety_objective` across all behaviour types. `safety_objective <base> [days] [geom]`                                 |
-| `passenger_fairness` | Fixed setup for passenger fairness studies.                                                                                                          |
-| `multiple_runs`      | Multi-run averaging for figures.                                                                                                                     |
-| `long_run`           | Single 100-day run.                                                                                                                                  |
-| `missing`            | Fills in missing parameter ranges from previous sweep.                                                                                               |
+| Mode                 | Description                                                                                                                                                          | Usage                                                                                                |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| `simple`             | Single config: d=225, R=0.5, `nearest`, stay+base behaviour.                                                                                                         | `python generate_configs.py simple <base> [days=1] [geom=0]`                                         |
+| `sweep`              | Full grid: all geometries (0–6), all behaviour types (0–4), R ∈ linspace(0.05, 1, 20), d ∈ linspace(50, 400, 11), all algorithms.                                    | `python generate_configs.py sweep <base>`                                                            |
+| `passenger_pref`     | Sweeps R=[0.2, 0.5, 1.0] for `nearest`, `nearest_passenger_pref`, `nearest_two_sided_dist_pass_pref`, and `nearest_two_sided_region_pass_pref`; behaviour stay+base. | `python generate_configs.py passenger_pref <base> [days=5] [geom=10] [max_declines=off]`             |
+| `region_pref`        | Sweeps R=[0.2, 0.5, 1.0] for `nearest_region_pref` with a given regions file; behaviours 0–3.                                                                        | `python generate_configs.py region_pref <base> <regions_file> [days=5] [geom=10] [max_declines=off]` |
+| `distance_pref`      | Sweeps R=[0.2, 0.5, 1.0] for `nearest_distance_pref`; behaviours 0–3.                                                                                                | `python generate_configs.py distance_pref <base> [days=5] [geom=10] [max_declines=off]`              |
+| `two_sided`          | Sweeps R=[0.2, 0.5, 1.0] for the chosen two-sided algorithm; behaviour stay+base.                                                                                    | `python generate_configs.py two_sided <base> <dist\|region> [days=5] [geom=10] [max_declines=off]`   |
+| `safety_objective`   | Sweeps R=[0.2, 0.5, 1.0] for `safety_objective`; behaviours 0–3.                                                                                                     | `python generate_configs.py safety_objective <base> [days=5] [geom=10]`                              |
+| `passenger_fairness` | Fixed: `passenger_fairness/test.conf`, d≈258 (ρ=15/km²), R=[0.2, 0.5, 1.0], geoms [0,1,2,3,6], `nearest`, stay+base. No extra arguments.                             | `python generate_configs.py passenger_fairness`                                                      |
+| `multiple_runs`      | Multi-run averaging for paper figures (hardcoded to `2019_05_19_base.conf`). No extra arguments.                                                                     | `python generate_configs.py multiple_runs`                                                           |
+| `long_run`           | Single 100-day run (hardcoded: `2019_02_14_base.conf`, d=225, R=0.5, `nearest`, geom 0, stay+base). No extra arguments.                                              | `python generate_configs.py long_run`                                                                |
+| `missing`            | Fills in missing R ranges from a previous sweep (hardcoded to `2019_05_06_base.conf`). No extra arguments.                                                           | `python generate_configs.py missing`                                                                 |
+
+### Argument reference
+
+| Argument         | Required by                                                                                          | Default                            | Description                                                                                                                                             |
+|------------------|------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `<base>`         | `simple`, `sweep`, `passenger_pref`, `region_pref`, `distance_pref`, `two_sided`, `safety_objective` | —                                  | Base `.conf` filename in `configs/` (include the extension, e.g. `big_city_base.conf`).                                                                 |
+| `<regions_file>` | `region_pref`                                                                                        | —                                  | Path to a regions JSON file **relative to** `configs/` (e.g. `regions_big_city.json`). Its content is embedded under the `regions` key.                 |
+| `<dist\|region>` | `two_sided`                                                                                          | —                                  | Variant: `dist` → `nearest_two_sided_dist_pass_pref`; `region` → `nearest_two_sided_region_pass_pref`.                                                  |
+| `[days]`         | optional for parameterised modes                                                                     | `1` (`simple`) / `5` (all others)  | Simulation length in real days; scales `max_time` and `batch_size` (48 samples per day).                                                                |
+| `[geom]`         | optional for parameterised modes                                                                     | `0` (`simple`) / `10` (all others) | Geometry index — selects a row from `configs/geom_specification_compact.json`.                                                                          |
+| `[max_declines]` | optional for `passenger_pref`, `region_pref`, `distance_pref`, `two_sided`                           | off (`null`)                       | Per-request forced-accept threshold: a taxi that has declined the same request this many times must accept it next time. Omit to leave the feature off. |
 
 Every generated config automatically includes all default values for breaks, safety, satisfaction, driver preferences,
 and passenger preferences, so base configs only need to specify what differs from defaults.
@@ -671,9 +691,9 @@ Each run produces three gzipped files in `results/`:
 ## Debugging with interactive visualization
 
 For debugging and fun purposes, display the map of the simulation with the taxis and requests color-coded and moving.
-Must be run from a Juypter Notebook.
+Must be run from a Jupyter Notebook.
 
-```python
+```jupyter
 %matplotlib
 notebook
 from city_model import Simulation
@@ -689,7 +709,7 @@ b
 
 Inspect individual objects:
 
-```python
+```jupyter
 print(s.requests[3])  # Request state and timestamps
 print(s.taxis[1])  # Taxi position, flags, scores
 ```
