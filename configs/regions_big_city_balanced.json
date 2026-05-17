@@ -1,4 +1,6 @@
 {
+  "default_popularity": 50,
+  "match_mode": "origin",
   "grid": {
     "n": 100,
     "m": 100
@@ -9,24 +11,27 @@
       "name": "North-West",
       "x_min": 0,
       "x_max": 24,
-      "y_min": 75,
-      "y_max": 99
+      "y_min": 76,
+      "y_max": 99,
+      "popularity": 75
     },
     {
       "id": "north_middle",
       "name": "North-Middle",
       "x_min": 25,
-      "x_max": 74,
-      "y_min": 75,
-      "y_max": 99
+      "x_max": 75,
+      "y_min": 76,
+      "y_max": 99,
+      "popularity": 75
     },
     {
       "id": "north_east",
       "name": "North-East",
-      "x_min": 75,
+      "x_min": 76,
       "x_max": 99,
-      "y_min": 75,
-      "y_max": 99
+      "y_min": 76,
+      "y_max": 99,
+      "popularity": 75
     },
     {
       "id": "middle_west",
@@ -34,23 +39,26 @@
       "x_min": 0,
       "x_max": 24,
       "y_min": 25,
-      "y_max": 74
+      "y_max": 75,
+      "popularity": 75
     },
     {
       "id": "middle_middle",
-      "name": "Middle-Middle",
+      "name": "City Center",
       "x_min": 25,
-      "x_max": 74,
+      "x_max": 75,
       "y_min": 25,
-      "y_max": 74
+      "y_max": 75,
+      "popularity": 100
     },
     {
       "id": "middle_east",
       "name": "Middle-East",
-      "x_min": 75,
+      "x_min": 76,
       "x_max": 99,
       "y_min": 25,
-      "y_max": 74
+      "y_max": 75,
+      "popularity": 75
     },
     {
       "id": "south_west",
@@ -58,23 +66,26 @@
       "x_min": 0,
       "x_max": 24,
       "y_min": 0,
-      "y_max": 24
+      "y_max": 24,
+      "popularity": 75
     },
     {
       "id": "south_middle",
       "name": "South-Middle",
       "x_min": 25,
-      "x_max": 74,
+      "x_max": 75,
       "y_min": 0,
-      "y_max": 24
+      "y_max": 24,
+      "popularity": 75
     },
     {
       "id": "south_east",
       "name": "South-East",
-      "x_min": 75,
+      "x_min": 76,
       "x_max": 99,
       "y_min": 0,
-      "y_max": 24
+      "y_max": 24,
+      "popularity": 75
     }
   ]
 }

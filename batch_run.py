@@ -4,6 +4,9 @@ import glob
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "batch_run_logs")
+
 def run_simulation(config_path):
     try:
         # for compatibility across OS
@@ -14,13 +17,30 @@ def run_simulation(config_path):
         # Run the process
         result = subprocess.run(cmd, capture_output=True, text=True)
 
+        os.makedirs(LOG_DIR, exist_ok=True)
+        log_name = f"{os.path.splitext(os.path.basename(config_path))[0]}.log"
+        log_path = os.path.join(LOG_DIR, log_name)
+
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            log_file.write(f"Command: {' '.join(cmd)}\n")
+            log_file.write(f"Config: {config_path}\n")
+            log_file.write(f"Return code: {result.returncode}\n\n")
+            log_file.write("=== STDOUT ===\n")
+            log_file.write(result.stdout or "")
+            if result.stdout and not result.stdout.endswith("\n"):
+                log_file.write("\n")
+            log_file.write("\n=== STDERR ===\n")
+            log_file.write(result.stderr or "")
+            if result.stderr and not result.stderr.endswith("\n"):
+                log_file.write("\n")
+
         if result.returncode == 0:
-            return True, config_path, result.stdout
+            return True, config_path, result.stdout, log_path
         else:
-            return False, config_path, f"Error running {config_path}:\n{result.stderr}\nOutput:\n{result.stdout}"
+            return False, config_path, f"Error running {config_path}:\n{result.stderr}\nOutput:\n{result.stdout}", log_path
 
     except Exception as e:
-        return False, config_path, f"Exception while running {config_path}: {e}"
+        return False, config_path, f"Exception while running {config_path}: {e}", None
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -55,11 +75,13 @@ if __name__ == "__main__":
         futures = [executor.submit(run_simulation, config) for config in config_files]
 
         for future in as_completed(futures):
-            success, path, output = future.result()
+            success, path, output, log_path = future.result()
             completed += 1
             remaining = total - completed
 
             if success:
-                print(f"Successfully finished {path} ({remaining} left)")
+                print(f"Successfully finished {path} ({remaining} left). Log: {log_path}")
             else:
                 print(output)
+                if log_path:
+                    print(f"Log: {log_path}")

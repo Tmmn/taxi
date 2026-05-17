@@ -1,0 +1,91 @@
+{
+  "default_popularity": 50,
+  "match_mode": "origin",
+  "grid": {
+    "n": 100,
+    "m": 100
+  },
+  "regions": [
+    {
+      "id": "north_west",
+      "name": "North-West (Moncloa/El Pardo)",
+      "x_min": 0,
+      "x_max": 45,
+      "y_min": 61,
+      "y_max": 99,
+      "popularity": 90
+    },
+    {
+      "id": "north_middle",
+      "name": "Northern Business (Chamartín/Tetuán)",
+      "x_min": 46,
+      "x_max": 60,
+      "y_min": 61,
+      "y_max": 99,
+      "popularity": 95
+    },
+    {
+      "id": "north_east",
+      "name": "North-East (Barajas Airport/Hortaleza)",
+      "x_min": 61,
+      "x_max": 99,
+      "y_min": 61,
+      "y_max": 99,
+      "popularity": 85
+    },
+    {
+      "id": "middle_west",
+      "name": "Middle-West (Casa de Campo)",
+      "x_min": 0,
+      "x_max": 45,
+      "y_min": 40,
+      "y_max": 60,
+      "popularity": 80
+    },
+    {
+      "id": "middle_middle",
+      "name": "M-30 Core (Centro/Salamanca)",
+      "x_min": 46,
+      "x_max": 60,
+      "y_min": 40,
+      "y_max": 60,
+      "popularity": 95
+    },
+    {
+      "id": "middle_east",
+      "name": "Middle-East (San Blas/Moratalaz)",
+      "x_min": 61,
+      "x_max": 99,
+      "y_min": 40,
+      "y_max": 60,
+      "popularity": 70
+    },
+    {
+      "id": "south_west",
+      "name": "South-West (Carabanchel/Latina)",
+      "x_min": 0,
+      "x_max": 45,
+      "y_min": 0,
+      "y_max": 39,
+      "popularity": 50
+    },
+    {
+      "id": "south_middle",
+      "name": "South-Middle (Usera/Villaverde)",
+      "x_min": 46,
+      "x_max": 60,
+      "y_min": 0,
+      "y_max": 39,
+      "popularity": 75
+    },
+    {
+      "id": "south_east",
+      "name": "South-East (Vallecas)",
+      "x_min": 61,
+      "x_max": 99,
+      "y_min": 0,
+      "y_max": 39,
+      "popularity": 80
+    }
+  ]
+}

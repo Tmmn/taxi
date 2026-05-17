@@ -8,3 +8,4 @@ slurm-*
 .idea/*
 .idea
 /.venv/
+/batch_run_logs
