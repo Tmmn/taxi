@@ -19,6 +19,7 @@ if (len(sys.argv) > 1) and (os.path.exists(sys.argv[1])):
     p = "/".join(sys.argv[1].split("/")[1:][:-1])
     run_id = sys.argv[1].split("/")[-1].split(".")[0]
     config = json.load(open(sys.argv[1]))
+    os.makedirs("results/" + p if p else "results", exist_ok=True)
     s = Simulation(**config)  # create a Simulation instance
     s.run_batch(run_id, data_path="results/"+p)
 else:
