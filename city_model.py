@@ -194,6 +194,7 @@ class Taxi:
     home: tuple[int, int] | None
     decline_count: int
     total_declines: int
+    trip_lengths: list
 
     def __init__(self, coords=None, taxi_id=None, safety_score=None):
         if coords is None:
@@ -214,6 +215,7 @@ class Taxi:
 
             self.actual_request_executing = None
             self.requests_completed = set()
+            self.trip_lengths = []
 
             # types of time metrics to be stored
             self.time_waiting = 0
@@ -828,6 +830,7 @@ class Simulation:
         self.taxis_to_destination = set()
 
         self.requests = dict()
+        self._requests_done_buffer = []
         self.requests_pending = set()
 
         # speeding up going through requests in the order of waiting times
@@ -1690,18 +1693,10 @@ class Simulation:
         return float(1.0 / (1.0 + np.exp(-(score - current_threshold) / self.passenger_score_temperature)))
 
     def _apply_safety_score_delta(self, taxi, delta):
-        taxi.safety_score = float(np.clip(
-            taxi.safety_score + delta,
-            self.safety_score_min,
-            self.safety_score_max
-        ))
+        taxi.safety_score = min(self.safety_score_max, max(self.safety_score_min, taxi.safety_score + delta))
 
     def _apply_satisfaction_delta(self, taxi, delta):
-        taxi.satisfaction_score = float(np.clip(
-            taxi.satisfaction_score + delta,
-            self.satisfaction_score_min,
-            self.satisfaction_score_max
-        ))
+        taxi.satisfaction_score = min(self.satisfaction_score_max, max(self.satisfaction_score_min, taxi.satisfaction_score + delta))
         taxi.last_satisfaction_delta = float(delta)
 
     def pickup_request(self, request_id):
@@ -1763,6 +1758,7 @@ class Simulation:
             self.taxis_to_destination.remove(r.taxi_id)
 
             trip_len = float(abs(r.dy - r.oy) + abs(r.dx - r.ox))
+            t.trip_lengths.append(trip_len)
             total_trip_time = 0
             if r.timestamps['assigned'] is not None:
                 total_trip_time = max(0, self.time - r.timestamps['assigned'])
@@ -1803,6 +1799,9 @@ class Simulation:
         # update request and taxi instances in global containers
         self.requests[request_id] = r
         self.taxis[r.taxi_id] = t
+
+        if r.mode in ('done', 'dropped'):
+            self._requests_done_buffer.append(r)
 
         if self.log:
             print("\tD request " + str(request_id) + ' taxi ' + str(t.taxi_id))
@@ -1980,7 +1979,7 @@ class Simulation:
             # t.initial_safety_score is recovery ceiling
             target = t.break_start_safety_score + (
                         t.initial_safety_score - t.break_start_safety_score) * recovery_fraction
-            t.safety_score = float(np.clip(target, self.safety_score_min, t.initial_safety_score))
+            t.safety_score = min(t.initial_safety_score, max(self.safety_score_min, target))
 
             self.taxis[taxi_id] = t
             return
@@ -2079,6 +2078,19 @@ class Simulation:
                 json.dump(ptm, f)
                 f.write('\n')
             results.append(measurement.read_aggregated_metrics(ptm, region_safety=region_safety))
+
+            # flush completed/dropped requests to disk and free their memory
+            if self._requests_done_buffer:
+                chunk = {
+                    "timestamp": self.time,
+                    "requests": [Measurements._serialize_request(r) for r in self._requests_done_buffer],
+                }
+                with open(data_path + '/run_' + run_id + '_per_request_metrics.json', 'a') as f:
+                    json.dump(chunk, f)
+                    f.write('\n')
+                for r in self._requests_done_buffer:
+                    del self.requests[r.request_id]
+                self._requests_done_buffer.clear()
 
             if region_safety is not None:
                 row = {"timestamp": self.time}
@@ -2212,6 +2224,7 @@ class Simulation:
                 r.mode = 'dropped'
                 r.cancellation_reason = r.last_no_match_reason if r.last_no_match_reason else 'patience_exceeded'
                 self.requests[request_id] = r
+                self._requests_done_buffer.append(r)
 
         self.requests_pending = set(self.requests_pending_deque)
 
@@ -2246,6 +2259,33 @@ class Measurements:
 
     def __init__(self, simulation):
         self.simulation = simulation
+
+    @staticmethod
+    def _serialize_request(r):
+        return {
+            "request_id": r.request_id,
+            "mode": r.mode,
+            "origin": (r.ox, r.oy),
+            "destination": (r.dx, r.dy),
+            "taxi_id": r.taxi_id,
+            "timestamp": r.timestamps["request"],
+            "assignment": r.timestamps["assigned"],
+            "pickup": r.timestamps["pickup"],
+            "dropoff": r.timestamps["dropoff"],
+            "driver_safety_score_start": getattr(r, "driver_safety_score_start", None),
+            "driver_safety_score_end": getattr(r, "driver_safety_score_end", None),
+            "driver_average_safety_score": getattr(r, "average_safety_score", None),
+            "driver_safety_score_pickup": getattr(r, "driver_safety_score_pickup", None),
+            "assigned_taxi_pos": getattr(r, "assigned_taxi_pos", None),
+            "assigned_taxi_distance": getattr(r, "assigned_taxi_distance", None),
+            "passenger_type": getattr(r, "passenger_type", None),
+            "safety_threshold": getattr(r, "safety_threshold", None),
+            "w_dist": getattr(r, "w_dist", None),
+            "w_safety": getattr(r, "w_safety", None),
+            "w_wait": getattr(r, "w_wait", None),
+            "cancellation_reason": getattr(r, "cancellation_reason", None),
+            "passenger_forced_accept": getattr(r, "passenger_forced_accept", False),
+        }
 
     def read_per_taxi_metrics(self):
         """
@@ -2312,12 +2352,7 @@ class Measurements:
 
         for taxi_id in self.simulation.taxis:
             taxi = self.simulation.taxis[taxi_id]
-            req_lengths = []
-
-            for request_id in taxi.requests_completed:
-                r = self.simulation.requests[request_id]
-                length = float(np.abs(r.dy - r.oy) + np.abs(r.dx - r.ox))
-                req_lengths.append(length)
+            req_lengths = taxi.trip_lengths
 
             if len(req_lengths) > 0:
                 trip_avg_length.append(round(np.nanmean(req_lengths), 4))
@@ -2391,30 +2426,7 @@ class Measurements:
 
         for request_id in self.simulation.requests:
             r = self.simulation.requests[request_id]
-            output_dict["requests"].append({
-                "request_id": r.request_id,
-                "mode": r.mode,
-                "origin": (r.ox, r.oy),
-                "destination": (r.dx, r.dy),
-                "taxi_id": r.taxi_id,
-                "timestamp": r.timestamps["request"],
-                "assignment": r.timestamps["assigned"],
-                "pickup": r.timestamps["pickup"],
-                "dropoff": r.timestamps["dropoff"],
-                "driver_safety_score_start": getattr(r, "driver_safety_score_start", None),
-                "driver_safety_score_end": getattr(r, "driver_safety_score_end", None),
-                "driver_average_safety_score": getattr(r, "average_safety_score", None),
-                "driver_safety_score_pickup": getattr(r, "driver_safety_score_pickup", None),
-                "assigned_taxi_pos": getattr(r, "assigned_taxi_pos", None),
-                "assigned_taxi_distance": getattr(r, "assigned_taxi_distance", None),
-                "passenger_type": getattr(r, "passenger_type", None),
-                "safety_threshold": getattr(r, "safety_threshold", None),
-                "w_dist": getattr(r, "w_dist", None),
-                "w_safety": getattr(r, "w_safety", None),
-                "w_wait": getattr(r, "w_wait", None),
-                "cancellation_reason": getattr(r, "cancellation_reason", None),
-                "passenger_forced_accept": getattr(r, "passenger_forced_accept", False),
-            })
+            output_dict["requests"].append(self._serialize_request(r))
 
         return output_dict
 

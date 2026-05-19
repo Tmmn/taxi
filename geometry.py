@@ -411,11 +411,9 @@ class City:
         """
         if "sigma" in distr_spec:
             # Sample isotropic Gaussian offsets, then shift by configured location.
-            temp = map(
-                lambda t: (int(round(t[0] * distr_spec["sigma"], 0) + distr_spec["location"][0]),
-                           int(round(t[1] * distr_spec["sigma"], 0)) + distr_spec["location"][1]),
-                self.rng.normal(size=(self.length, 2))
-            )
+            samples = self.rng.normal(size=(self.length, 2))
+            coords = np.round(samples * distr_spec["sigma"]).astype(int) + np.array(distr_spec["location"], dtype=int)
+            temp = (tuple(row) for row in coords.tolist())
         else:
             # Sample radius from inverse CDF and angle uniformly to get radial points.
             u = self.rng.uniform(size=(self.length,))
@@ -424,11 +422,9 @@ class City:
             x = distr_spec["cdf_inv"](u) * np.cos(phi)
             y = distr_spec["cdf_inv"](u) * np.sin(phi)
 
-            temp = map(
-                lambda t: (int(round(t[0], 0) + distr_spec["location"][0]),
-                           int(round(t[1], 0) + distr_spec["location"][1])),
-                zip(x, y)
-            )
+            loc = np.array(distr_spec["location"], dtype=int)
+            coords_xy = np.column_stack([np.round(x), np.round(y)]).astype(int) + loc
+            temp = (tuple(row) for row in coords_xy.tolist())
 
         temp = filter(lambda n: (0 <= n[0]) and (self.n > n[0]) and (0 <= n[1]) and (self.m > n[1]), temp)
 
@@ -497,10 +493,12 @@ class City:
 
         while depth < radius:
             # take the next nodes
-            ta = set.union(*[self.A[node] for node in tree[depth]])
-            p = p.union(ta)
+            ta = set()
+            for node in tree[depth]:
+                ta.update(self.A[node])
+            p.update(ta)
 
-            if mode == "nearest" and len(ta) > 0:
+            if mode == "nearest" and ta:
                 break
 
             depth += 1
