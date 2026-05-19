@@ -2114,7 +2114,7 @@ class Simulation:
             with open(data_path + '/run_' + run_id + '_region_safety_averages.csv', 'w', newline='') as f:
                 pd.DataFrame.from_records(region_safety_rows).to_csv(f, float_format="%.4f")
 
-        # dumping per request metrics out (only at the end)
+        # dump any requests still in-flight at simulation end (pending/assigned/serving) (not dumped already)
         prm = measurement.read_per_request_metrics()
         with open(data_path + '/run_' + run_id + '_per_request_metrics.json', 'a') as f:
             json.dump(prm, f)
