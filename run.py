@@ -11,7 +11,8 @@
 # >>> ./run.py simple
 
 
-from city_model import *
+from city_model import Simulation
+import json
 import os
 import sys
 
@@ -21,9 +22,6 @@ if (len(sys.argv) > 1) and (os.path.exists(sys.argv[1])):
     config = json.load(open(sys.argv[1]))
     os.makedirs("results/" + p if p else "results", exist_ok=True)
     s = Simulation(**config)  # create a Simulation instance
-    s.run_batch(run_id, data_path="results/"+p)
+    s.run_batch(run_id, data_path="results/" + p)
 else:
-    print('Please give an existing config file from the "./configs" folder!')
-
-#TODO modify all run scripts, because config reference has changed!
-
+    print('Please give an existing config file!')
