@@ -211,6 +211,7 @@ def assign_break_cohort_to_taxi(sim: Simulation, taxi: Taxi) -> Taxi:
         taxi.shift_duration_tu = None
         taxi.shift_ended = False
         taxi.shift_start_work_time_tu = 0.0
+        taxi.shift_start_income = 0.0
         taxi.intra_shift_break_after_work_tu = None
         taxi.intra_shift_break_duration_tu = None
         taxi.demotivation_threshold_tu = None
@@ -306,6 +307,7 @@ def return_taxi_from_break(sim: Simulation, t: Taxi) -> None:
         assert sim.shift_duration_tu_config is not None
         work_time = float(t.time_serving + t.time_to_request + t.time_cruising)
         t.shift_start_work_time_tu = work_time
+        t.shift_start_income = sim.eval_taxi_income(t.taxi_id)
         target_spec = sim.shift_duration_tu_config[t.break_profile_id]
         t.shift_duration_tu = _sample_break_target_from_spec(target_spec)
         t.shift_ended = False
@@ -352,10 +354,10 @@ def check_and_manage_breaks(sim: Simulation) -> None:
         return
 
     current_day = sim.time // sim.day_length_tu
-    for taxi_id in sim.taxis:
-        t: Taxi = sim.taxis[taxi_id]
-        # next day
-        if t.breaks_day_index != current_day:
+    if current_day != sim._last_break_check_day:
+        sim._last_break_check_day = current_day
+        for taxi_id in sim.taxis:
+            t: Taxi = sim.taxis[taxi_id]
             t.breaks_day_index = current_day
             t.breaks_started_today = 0
             t.break_deferral_elapsed_tu = 0

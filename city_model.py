@@ -151,6 +151,11 @@ class Taxi:
     total_declines : int
         total number of declines across the whole simulation (never reset)
 
+    shift_start_income : float
+        cumulative income (from eval_taxi_income) at the moment the current shift
+        started; used to compute shift-relative income for the flexibility model.
+        Reset whenever shift_start_work_time_tu is reset at a new shift start.
+
     """
 
     x: int
@@ -195,6 +200,10 @@ class Taxi:
     decline_count: int
     total_declines: int
     trip_lengths: list
+    trip_count: int
+    trip_length_sum: float
+    trip_length_sum_sq: float
+    shift_start_income: float
 
     def __init__(self, coords=None, taxi_id=None, safety_score=None):
         if coords is None:
@@ -216,6 +225,9 @@ class Taxi:
             self.actual_request_executing = None
             self.requests_completed = set()
             self.trip_lengths = []
+            self.trip_count = 0
+            self.trip_length_sum = 0.0
+            self.trip_length_sum_sq = 0.0
 
             # types of time metrics to be stored
             self.time_waiting = 0
@@ -264,6 +276,7 @@ class Taxi:
             self.home = None
             self.decline_count = 0
             self.total_declines = 0
+            self.shift_start_income = 0.0
 
     def __str__(self):
         """
@@ -695,6 +708,7 @@ class Simulation:
 
         # break mechanism (including cohort handling) lives in break_mechanism.py
         configure_breaks(self, config)
+        self._last_break_check_day = -1  # sentinel so day-0 reset fires on first step
 
         # time-of-day request rate schedule
         self.request_rate_schedule = self.configure_request_schedule(config.get("request_rate_schedule", []))
@@ -777,6 +791,19 @@ class Simulation:
             raise ValueError("route_pref_strength_range values must be in [0, 1].")
         if self.route_pref_strength_low > self.route_pref_strength_high:
             raise ValueError("route_pref_strength_range low must be <= high.")
+
+        # driver income-flexibility model
+        # income_target_rate: expected income per work-time unit; None disables the model
+        income_target_rate_val = config.get("income_target_rate", None)
+        self.income_target_rate = float(income_target_rate_val) if income_target_rate_val is not None else None
+        if self.income_target_rate is not None and self.income_target_rate <= 0.0:
+            raise ValueError("income_target_rate must be > 0.")
+        self.driver_flexibility_threshold = float(config.get("driver_flexibility_threshold", 0.3))
+        if not (0.0 <= self.driver_flexibility_threshold <= 1.0):
+            raise ValueError("driver_flexibility_threshold must be in [0, 1].")
+        self.driver_flexibility_temperature = float(config.get("driver_flexibility_temperature", 0.15))
+        if self.driver_flexibility_temperature <= 0.0:
+            raise ValueError("driver_flexibility_temperature must be > 0.")
 
         if "route_length_class_thresholds" in config:
             route_length_thresholds = config["route_length_class_thresholds"]
@@ -1186,7 +1213,7 @@ class Simulation:
                 * poorest : sending the least earning available taxi for the user from within the circle of a radius self.city.hard_limit
                 * nearest_distance_pref : nearest matching with route-length preference-based acceptance; taxis that decline are excluded from future re-matches for the same request
                 * nearest_region_pref : nearest matching with region-popularity-based acceptance; taxis that decline are excluded from future re-matches for the same request
-                * safety_objective : objective safety-optimal matching; processes regions from least-safe to most-safe (by avg safety of available taxis at pickup), oldest request first per region, assigns the globally most-safe available taxi - no preferences applied
+                * safety_objective : objective safety-optimal matching; processes regions from least-safe to most-safe (by avg safety of available taxis at pickup), oldest request first per region, assigns the safest available taxi within hard_limit radius - no preferences applied
         """
 
         if len(self.requests_pending_deque) == 0:
@@ -1339,7 +1366,7 @@ class Simulation:
                         self.requests_pending_deque_temporary.append(request_id)
                         continue
 
-                    p_accept = self._region_acceptance_probability(r)
+                    p_base = self._region_acceptance_probability(r)
 
                     assigned = False
                     for taxi_id in possible_taxi_ids:
@@ -1349,6 +1376,8 @@ class Simulation:
                                 self.max_declines is not None and
                                 taxi.decline_count >= self.max_declines
                         )
+                        flexibility = self._driver_income_flexibility(taxi)
+                        p_accept = p_base + flexibility * (self.preference_base_acceptance_prob - p_base)
                         if forced or self.rng.random() < p_accept:
                             taxi.decline_count = 0
                             self.assign_request(request_id, taxi_id)
@@ -1533,7 +1562,7 @@ class Simulation:
                 # Objective safety-optimal matching
                 # Process regions from least-safe to most-safe (lowest avg safety score of currently available taxis at pickup first)
                 # Within each region, serve the oldest pending request first
-                # Each request is matched with the globally most-safe available taxi regardless of distance - no preferences applied.
+                # Each request is matched with the safest available taxi within hard_limit radius - no preferences applied.
 
                 # Drain the pending deque into a flat list preserving arrival order
                 all_pending = []
@@ -1541,13 +1570,19 @@ class Simulation:
                     all_pending.append(self.requests_pending_deque.popleft())
 
                 if not self.regions:
-                    # No region config: assign safest taxi globally in arrival order
+                    # No region config: assign safest taxi within radius in arrival order
                     for request_id in all_pending:
-                        if not self.taxis_available:
+                        r = self.requests[request_id]
+                        possible_taxi_ids = self.city.find_nearest_available_taxis(
+                            self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                            mode="circle",
+                            radius=self.city.hard_limit
+                        )
+                        if not possible_taxi_ids:
                             self.requests_pending_deque_temporary.append(request_id)
                             continue
                         best_taxi_id = max(
-                            self.taxis_available,
+                            possible_taxi_ids,
                             key=lambda tid: self.taxis[tid].safety_score
                         )
                         self.assign_request(request_id, best_taxi_id)
@@ -1581,22 +1616,34 @@ class Simulation:
                     # Process regions from least-safe to most-safe
                     for region in sorted_regions:
                         for request_id in region_requests[region["id"]]:
-                            if not self.taxis_available:
+                            r = self.requests[request_id]
+                            possible_taxi_ids = self.city.find_nearest_available_taxis(
+                                self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                                mode="circle",
+                                radius=self.city.hard_limit
+                            )
+                            if not possible_taxi_ids:
                                 self.requests_pending_deque_temporary.append(request_id)
                                 continue
                             best_taxi_id = max(
-                                self.taxis_available,
+                                possible_taxi_ids,
                                 key=lambda tid: self.taxis[tid].safety_score
                             )
                             self.assign_request(request_id, best_taxi_id)
 
-                    # Requests outside any region get the same safest-taxi rule, served last
+                    # Requests outside any region get the same safest-taxi-in-radius rule, served last
                     for request_id in unregioned:
-                        if not self.taxis_available:
+                        r = self.requests[request_id]
+                        possible_taxi_ids = self.city.find_nearest_available_taxis(
+                            self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                            mode="circle",
+                            radius=self.city.hard_limit
+                        )
+                        if not possible_taxi_ids:
                             self.requests_pending_deque_temporary.append(request_id)
                             continue
                         best_taxi_id = max(
-                            self.taxis_available,
+                            possible_taxi_ids,
                             key=lambda tid: self.taxis[tid].safety_score
                         )
                         self.assign_request(request_id, best_taxi_id)
@@ -1632,12 +1679,53 @@ class Simulation:
             return route_class == "long"
         return True
 
+    def _driver_income_flexibility(self, taxi) -> float:
+        """Income-pressure flexibility factor in [0, 1].
+
+        Returns 0 when income is on target (preferences fully active) and
+        approaches 1 when the driver's income significantly lags the expected
+        pace for elapsed shift work time (preferences relax toward neutral).
+
+        The shortfall fraction is:
+            shortfall = max(0, expected_shift_income - actual_shift_income)
+                        / (income_target_rate * shift_duration_tu)
+
+        If shift_duration_tu is None the normalization falls back to the
+        expected income accumulated so far (so flexibility still grows as the
+        gap widens, just without an absolute shift-length reference).
+
+        Note: shift_start_income must be reset alongside shift_start_work_time_tu
+        at the start of each new shift so the computation stays shift-relative.
+        """
+        if self.income_target_rate is None:
+            return 0.0
+        work_time = float(
+            taxi.time_serving + taxi.time_to_request +
+            taxi.time_cruising + taxi.time_waiting
+        )
+        elapsed_shift_work = max(0.0, work_time - taxi.shift_start_work_time_tu)
+        if elapsed_shift_work == 0.0:
+            return 0.0
+        expected_shift_income = self.income_target_rate * elapsed_shift_work
+        actual_shift_income = self.eval_taxi_income(taxi.taxi_id) - taxi.shift_start_income
+        if taxi.shift_duration_tu is not None:
+            norm = self.income_target_rate * taxi.shift_duration_tu
+        else:
+            norm = max(1.0, expected_shift_income)
+        shortfall = max(0.0, expected_shift_income - actual_shift_income) / max(1.0, norm)
+        return float(1.0 / (1.0 + np.exp(
+            -(shortfall - self.driver_flexibility_threshold) / self.driver_flexibility_temperature
+        )))
+
     def _acceptance_probability(self, taxi, route_class):
-        match_score = self._route_match_score(taxi.route_length_pref, taxi.pref_strength_route, route_class)
+        flexibility = self._driver_income_flexibility(taxi)
+        effective_pref_strength = taxi.pref_strength_route * (1.0 - flexibility)
         ceiling = min(self.nonpreferred_accept_ceiling, taxi.nonpreferred_accept_ceiling)
+        effective_ceiling = ceiling + flexibility * (self.preference_base_acceptance_prob - ceiling)
+        match_score = self._route_match_score(taxi.route_length_pref, effective_pref_strength, route_class)
         if self._is_preferred_route(taxi.route_length_pref, route_class):
-            return ceiling + (self.preference_base_acceptance_prob - ceiling) * match_score
-        return ceiling * match_score
+            return effective_ceiling + (self.preference_base_acceptance_prob - effective_ceiling) * match_score
+        return effective_ceiling * match_score
 
     def _build_region_popularity_grid(self, region_config):
         self.region_popularity_grid = np.full(
@@ -1759,6 +1847,9 @@ class Simulation:
 
             trip_len = float(abs(r.dy - r.oy) + abs(r.dx - r.ox))
             t.trip_lengths.append(trip_len)
+            t.trip_count += 1
+            t.trip_length_sum += trip_len
+            t.trip_length_sum_sq += trip_len * trip_len
             total_trip_time = 0
             if r.timestamps['assigned'] is not None:
                 total_trip_time = max(0, self.time - r.timestamps['assigned'])
@@ -2071,6 +2162,19 @@ class Simulation:
                 # adding taxi homes to output
                 ptm['taxi_homes'] = [[int(self.taxis[t].home[0]), int(self.taxis[t].home[1])] for t in self.taxis]
 
+                # write one-time static taxi attributes (preferences, shift cohort)
+                taxi_static = {
+                    "taxi_ids": [t for t in self.taxis],
+                    "route_length_pref": [self.taxis[t].route_length_pref for t in self.taxis],
+                    "pref_strength_route": [round(self.taxis[t].pref_strength_route, 4) for t in self.taxis],
+                    "nonpreferred_accept_ceiling": [round(self.taxis[t].nonpreferred_accept_ceiling, 4) for t in self.taxis],
+                    "break_profile_id": [self.taxis[t].break_profile_id for t in self.taxis],
+                    "shift_duration_tu": [self.taxis[t].shift_duration_tu for t in self.taxis],
+                    "initial_safety_score": [round(self.taxis[t].initial_safety_score, 4) for t in self.taxis],
+                }
+                with open(data_path + '/run_' + run_id + '_taxi_static.json', 'w') as f:
+                    json.dump(taxi_static, f)
+
             region_safety = self.compute_region_safety_averages() if self.regions else None
 
             # dumping per taxi metrics out (per batch)
@@ -2121,7 +2225,7 @@ class Simulation:
             f.write('\n')
 
         # compressing written objects
-        files_to_compress = ['_per_taxi_metrics.json', '_per_request_metrics.json', '_aggregates.csv']
+        files_to_compress = ['_per_taxi_metrics.json', '_per_request_metrics.json', '_aggregates.csv', '_taxi_static.json']
         if region_safety_rows:
             files_to_compress.append('_region_safety_averages.csv')
         for file in files_to_compress:
@@ -2352,15 +2456,16 @@ class Measurements:
 
         for taxi_id in self.simulation.taxis:
             taxi = self.simulation.taxis[taxi_id]
-            req_lengths = taxi.trip_lengths
-
-            if len(req_lengths) > 0:
-                trip_avg_length.append(round(np.nanmean(req_lengths), 4))
-                trip_std_length.append(round(np.nanstd(req_lengths), 4))
+            n = taxi.trip_count
+            trip_num_completed.append(n)
+            if n > 0:
+                mean = taxi.trip_length_sum / n
+                variance = taxi.trip_length_sum_sq / n - mean * mean
+                trip_avg_length.append(round(mean, 4))
+                trip_std_length.append(round(variance ** 0.5 if variance > 0 else 0.0, 4))
             else:
                 trip_avg_length.append(0)
                 trip_std_length.append(np.nan)
-            trip_num_completed.append(len(req_lengths))
             incomes.append(self.simulation.eval_taxi_income(taxi_id))
 
             s = taxi.time_serving
