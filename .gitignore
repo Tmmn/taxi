@@ -1,6 +1,6 @@
 .ipynb*
 configs/*_*_*.conf
-results/*
+results
 !configs/geomet*
 slurm/*
 slurm-*

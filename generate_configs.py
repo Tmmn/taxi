@@ -28,7 +28,7 @@ class ConfigGenerator:
         number of real days the simulation should run (default: 1)
     """
 
-    def __init__(self, base: str, days: int = 1) -> None:
+    def __init__(self, base: str, days: float | int = 1) -> None:
 
         self.base = base
         self.days = days
@@ -119,7 +119,9 @@ class ConfigGenerator:
         return round(np.mean(templ), 1)
 
     def generate_config(self, d: float, R: float, alg: int | str, geom: int, behav_type: int,
-                        regions_file: str | None = None) -> dict | None:
+                        regions_file: str | None = None,
+                        no_breaks: bool = False,
+                        constant_rate: bool = False) -> dict | None:
         """
         Generate a simulation configuration with specified parameters.
 
@@ -139,6 +141,14 @@ class ConfigGenerator:
         regions_file : str, optional
             path to a regions JSON file; embeds its content under
             ``regions`` in the config and sets default ``max_declines`` if not already present
+        no_breaks : bool, optional
+            if True, remove all break-related parameters from the config so drivers never take
+            breaks; intended for calibration runs (Layers 1-3) where breaks would confound
+            supply/demand or safety measurements
+        constant_rate : bool, optional
+            if True, remove ``request_rate_schedule`` so demand is constant throughout the
+            simulation; intended for calibration runs where time-varying demand would obscure
+            steady-state utilization or safety measurements
 
         Returns
         -------
@@ -188,69 +198,75 @@ class ConfigGenerator:
         else:
             conf.pop("reset_time", None)
 
-        # Add break and working-hour parameters if not already in base config
-        if "driver_break_cohort_mix" not in conf:
-            conf["driver_break_cohort_mix"] = {
-                "short_shift": 0.5,
-                "mid_shift": 0.3,
-                "long_shift": 0.2
-            }
-        if "shift_duration_tu" not in conf:
-            conf["shift_duration_tu"] = {
-                "short_shift": {"dist": "uniform", "low": 900, "high": 1440},
-                "mid_shift": {"dist": "uniform", "low": 1440, "high": 2160},
-                "long_shift": {"dist": "uniform", "low": 2520, "high": 3240}
-            }
-
-        if "day_length_tu" not in conf:
-            conf["day_length_tu"] = 8640
-        if "rush_windows_tu" not in conf:
-            conf["rush_windows_tu"] = [{"start": 2520, "end": 3600}, {"start": 5760, "end": 6840}]
-        if "p_defer_end_of_shift_in_rush" not in conf:
-            conf["p_defer_end_of_shift_in_rush"] = 0.3
-        if "max_break_deferral_tu" not in conf:
-            conf["max_break_deferral_tu"] = 180
-
-        if "break_cohort_settings" not in conf:
-            conf["break_cohort_settings"] = {
-                "short_shift": {
-                    "inter_shift_rest_tu": {"dist": "uniform", "low": 1080, "high": 2160},
-                    "intra_shift_break_after_work_tu": {"dist": "uniform", "low": 540, "high": 720},
-                    "intra_shift_break_duration_tu": {"dist": "uniform", "low": 60, "high": 120},
-                    "demotivation_threshold_tu": {"dist": "uniform", "low": 240, "high": 480},
-                    "shift_start_offset_tu": {"dist": "uniform", "low": 1, "high": 900}
-                },
-                "mid_shift": {
-                    "inter_shift_rest_tu": {"dist": "uniform", "low": 2160, "high": 4320},
-                    "intra_shift_break_after_work_tu": {"dist": "uniform", "low": 720, "high": 1080},
-                    "intra_shift_break_duration_tu": {"dist": "uniform", "low": 60, "high": 150},
-                    "demotivation_threshold_tu": {"dist": "uniform", "low": 300, "high": 600},
-                    "shift_start_offset_tu": {"dist": "uniform", "low": 1, "high": 1440}
-                },
-                "long_shift": {
-                    "inter_shift_rest_tu": {"dist": "uniform", "low": 5400, "high": 8640},
-                    "intra_shift_break_after_work_tu": {"dist": "uniform", "low": 1080, "high": 1440},
-                    "intra_shift_break_duration_tu": {"dist": "uniform", "low": 90, "high": 180},
-                    "demotivation_threshold_tu": {"dist": "uniform", "low": 360, "high": 720},
-                    "shift_start_offset_tu": {"dist": "uniform", "low": 1, "high": 2520}
+        if no_breaks:
+            for key in ["driver_break_cohort_mix", "shift_duration_tu", "break_cohort_settings",
+                        "day_length_tu", "rush_windows_tu", "p_defer_end_of_shift_in_rush",
+                        "max_break_deferral_tu"]:
+                conf.pop(key, None)
+        else:
+            if "driver_break_cohort_mix" not in conf:
+                conf["driver_break_cohort_mix"] = {
+                    "short_shift": 0.5,
+                    "mid_shift": 0.3,
+                    "long_shift": 0.2
                 }
-            }
+            if "shift_duration_tu" not in conf:
+                conf["shift_duration_tu"] = {
+                    "short_shift": {"dist": "uniform", "low": 900, "high": 1440},
+                    "mid_shift": {"dist": "uniform", "low": 1440, "high": 2160},
+                    "long_shift": {"dist": "uniform", "low": 2520, "high": 3240}
+                }
+            if "day_length_tu" not in conf:
+                conf["day_length_tu"] = 8640
+            if "rush_windows_tu" not in conf:
+                conf["rush_windows_tu"] = [{"start": 2520, "end": 3600}, {"start": 5760, "end": 6840}]
+            if "p_defer_end_of_shift_in_rush" not in conf:
+                conf["p_defer_end_of_shift_in_rush"] = 0.3
+            if "max_break_deferral_tu" not in conf:
+                conf["max_break_deferral_tu"] = 180
+            if "break_cohort_settings" not in conf:
+                conf["break_cohort_settings"] = {
+                    "short_shift": {
+                        "inter_shift_rest_tu": {"dist": "uniform", "low": 1080, "high": 2160},
+                        "intra_shift_break_after_work_tu": {"dist": "uniform", "low": 540, "high": 720},
+                        "intra_shift_break_duration_tu": {"dist": "uniform", "low": 60, "high": 120},
+                        "demotivation_threshold_tu": {"dist": "uniform", "low": 240, "high": 480},
+                        "shift_start_offset_tu": {"dist": "uniform", "low": 1, "high": 900}
+                    },
+                    "mid_shift": {
+                        "inter_shift_rest_tu": {"dist": "uniform", "low": 2160, "high": 4320},
+                        "intra_shift_break_after_work_tu": {"dist": "uniform", "low": 720, "high": 1080},
+                        "intra_shift_break_duration_tu": {"dist": "uniform", "low": 60, "high": 150},
+                        "demotivation_threshold_tu": {"dist": "uniform", "low": 300, "high": 600},
+                        "shift_start_offset_tu": {"dist": "uniform", "low": 1, "high": 1440}
+                    },
+                    "long_shift": {
+                        "inter_shift_rest_tu": {"dist": "uniform", "low": 5400, "high": 8640},
+                        "intra_shift_break_after_work_tu": {"dist": "uniform", "low": 1080, "high": 1440},
+                        "intra_shift_break_duration_tu": {"dist": "uniform", "low": 90, "high": 180},
+                        "demotivation_threshold_tu": {"dist": "uniform", "low": 360, "high": 720},
+                        "shift_start_offset_tu": {"dist": "uniform", "low": 1, "high": 2520}
+                    }
+                }
 
-        if "request_rate_schedule" not in conf:
-            conf["request_rate_schedule"] = [
-                {"start": 0, "end": 1080, "multiplier": 0.25},
-                {"start": 1080, "end": 2520, "multiplier": 0.7},
-                {"start": 2520, "end": 3600, "multiplier": 1.8},
-                {"start": 3600, "end": 5760, "multiplier": 1.0},
-                {"start": 5760, "end": 6840, "multiplier": 2.0},
-                {"start": 6840, "end": 8640, "multiplier": 0.5}
-            ]
+        if constant_rate:
+            conf.pop("request_rate_schedule", None)
+        else:
+            if "request_rate_schedule" not in conf:
+                conf["request_rate_schedule"] = [
+                    {"start": 0, "end": 1080, "multiplier": 0.25},
+                    {"start": 1080, "end": 2520, "multiplier": 0.7},
+                    {"start": 2520, "end": 3600, "multiplier": 1.8},
+                    {"start": 3600, "end": 5760, "multiplier": 1.0},
+                    {"start": 5760, "end": 6840, "multiplier": 2.0},
+                    {"start": 6840, "end": 8640, "multiplier": 0.5}
+                ]
 
         # Add safety score parameters if not already in base config
         if "safety_score_change_serving_rate" not in conf:
             conf["safety_score_change_serving_rate"] = -0.02
         if "safety_score_change_waiting_rate" not in conf:
-            conf["safety_score_change_waiting_rate"] = 0.01
+            conf["safety_score_change_waiting_rate"] = -0.001
         if "safety_score_break_recovery_constant" not in conf:
             conf["safety_score_break_recovery_constant"] = 180.0
         if "safety_score_min" not in conf:
@@ -361,7 +377,7 @@ class ConfigGenerator:
 
         # filename
         fname = self.base.split('.')[0] + \
-                '_days_' + str(self.days) + \
+                '_days_' + ('%g' % self.days).replace('.', '_') + \
                 '_d_' + d_string + \
                 '_R_' + R_string + \
                 '_alg_' + config_dict['matching'] + \
@@ -382,7 +398,8 @@ class ConfigGenerator:
 if __name__ == '__main__':
     supported_modes = ["sweep", "long_run", "new_geoms", "multiple_runs", "figure2", "missing", "simple",
                        "passenger_fairness", "region_pref", "distance_pref", "passenger_pref", "two_sided",
-                       "safety_objective"]
+                       "safety_objective",
+                       "calibrate_supply", "calibrate_safety", "calibrate_flexibility", "calibrate_region"]
     if len(sys.argv) < 2 or sys.argv[1] not in supported_modes:
         print(f"Please give a mode argument: {', '.join(supported_modes)}")
         sys.exit(1)
@@ -796,3 +813,122 @@ if __name__ == '__main__':
         else:
             print("Failed to generate config")
             sys.exit(1)
+
+    elif mode == "calibrate_supply":
+        # Calibration Layer 1/2: nearest algorithm, no breaks, constant demand rate.
+        # Produces a utilization and income baseline for the chosen supply/demand ratio.
+        # Usage: python generate_configs.py calibrate_supply <base_config> [days] [geom]
+        # Example: python generate_configs.py calibrate_supply big_city_base.conf 0.25 0
+        # Defaults: days=0.25 (~6 simulated hours), geom=0
+        if len(sys.argv) < 3:
+            print("Usage: python generate_configs.py calibrate_supply <base_config> [days] [geom]")
+            print("Example: python generate_configs.py calibrate_supply big_city_base.conf 0.25 0")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        days = float(sys.argv[3]) if len(sys.argv) > 3 else 0.25
+        geom = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+
+        gen = ConfigGenerator(base_config, days=days)
+        d = np.sqrt(1e6 / 15)  # taxi density ~15/km²
+        R_list = [0.2, 0.3, 0.4, 0.5, 0.6, 0.8]
+
+        for R in R_list:
+            conf = gen.generate_config(d, R, "nearest", geom, 1,
+                                       no_breaks=True, constant_rate=True)
+            if conf is not None:
+                fname, content = gen.dump_config(conf)
+                with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                    f.write(content)
+                print(f"Successfully wrote {fname}")
+
+    elif mode == "calibrate_safety":
+        # Calibration Layer 3: nearest algorithm, no breaks, constant demand rate.
+        # Isolates the safety score degradation rate over approximately one long-shift duration.
+        # days=0.25 produces ~2200 time units, spanning the long-shift reference length.
+        # Usage: python generate_configs.py calibrate_safety <base_config> [days] [geom]
+        # Example: python generate_configs.py calibrate_safety big_city_base.conf 0.25 0
+        if len(sys.argv) < 3:
+            print("Usage: python generate_configs.py calibrate_safety <base_config> [days] [geom]")
+            print("Example: python generate_configs.py calibrate_safety big_city_base.conf 0.25 0")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        days = float(sys.argv[3]) if len(sys.argv) > 3 else 0.25
+        geom = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+
+        gen = ConfigGenerator(base_config, days=days)
+        d = np.sqrt(1e6 / 15)
+        R = 0.5  # mid-utilization
+
+        conf = gen.generate_config(d, R, "nearest", geom, 1,
+                                   no_breaks=True, constant_rate=True)
+        if conf is not None:
+            fname, content = gen.dump_config(conf)
+            with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                f.write(content)
+            print(f"Successfully wrote {fname}")
+            print(f"  max_time: {conf['max_time']} TU  (long-shift reference: ~2880 TU)")
+
+    elif mode == "calibrate_flexibility":
+        # Calibration Layer 5: nearest_distance_pref algorithm with income flexibility active.
+        # Samples the shortfall distribution across acceptance decisions at multiple R values.
+        # Requires income_target_rate in the base config (from Layer 2).
+        # Usage: python generate_configs.py calibrate_flexibility <base_config> [days] [geom]
+        # Example: python generate_configs.py calibrate_flexibility big_city_base.conf 1 0
+        if len(sys.argv) < 3:
+            print("Usage: python generate_configs.py calibrate_flexibility <base_config> [days] [geom]")
+            print("Example: python generate_configs.py calibrate_flexibility big_city_base.conf 1 0")
+            print("Note: income_target_rate must be set in the base config (from Layer 2).")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        days = float(sys.argv[3]) if len(sys.argv) > 3 else 1
+        geom = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+
+        gen = ConfigGenerator(base_config, days=days)
+        d = np.sqrt(1e6 / 15)
+        R_list = [0.3, 0.5, 0.7]
+
+        for R in R_list:
+            conf = gen.generate_config(d, R, "nearest_distance_pref", geom, 1)
+            if conf is not None:
+                fname, content = gen.dump_config(conf)
+                with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                    f.write(content)
+                print(f"Successfully wrote {fname}")
+
+    elif mode == "calibrate_region":
+        # Calibration Layer 7: paired nearest baseline and nearest_region_pref configs at the same R values.
+        # Produces per-region service-rate data for comparing geographic acceptance against the baseline.
+        # Usage: python generate_configs.py calibrate_region <base_config> <regions_file> [days] [geom]
+        # Example: python generate_configs.py calibrate_region big_city_base.conf regions.json 0.25 0
+        if len(sys.argv) < 4:
+            print("Usage: python generate_configs.py calibrate_region <base_config> <regions_file> [days] [geom]")
+            print("Example: python generate_configs.py calibrate_region big_city_base.conf regions.json 0.25 0")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        regions_file = sys.argv[3]
+        days = float(sys.argv[4]) if len(sys.argv) > 4 else 0.25
+        geom = int(sys.argv[5]) if len(sys.argv) > 5 else 0
+
+        gen = ConfigGenerator(base_config, days=days)
+        d = np.sqrt(1e6 / 15)
+        R_list = [0.3, 0.5, 0.7]
+
+        for R in R_list:
+            conf_base = gen.generate_config(d, R, "nearest", geom, 1, constant_rate=True)
+            if conf_base is not None:
+                fname, content = gen.dump_config(conf_base)
+                with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                    f.write(content)
+                print(f"Successfully wrote {fname}")
+
+            conf_region = gen.generate_config(d, R, "nearest_region_pref", geom, 1,
+                                              regions_file=regions_file, constant_rate=True)
+            if conf_region is not None:
+                fname, content = gen.dump_config(conf_region)
+                with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                    f.write(content)
+                print(f"Successfully wrote {fname}")
