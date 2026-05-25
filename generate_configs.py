@@ -44,7 +44,8 @@ class ConfigGenerator:
         alg8 = "nearest_two_sided_dist_pass_pref"
         alg9 = "nearest_two_sided_region_pass_pref"
         alg10 = "safety_objective"
-        self.alg_list = [alg1, alg2, alg3, alg4, alg5, alg6, alg7, alg8, alg9, alg10]
+        alg11 = "safety_objective_two_sided"
+        self.alg_list = [alg1, alg2, alg3, alg4, alg5, alg6, alg7, alg8, alg9, alg10, alg11]
 
         # different geometries
         geom_dict_all = {i: json.loads(geom.strip('\n')) for i, geom
@@ -397,8 +398,9 @@ class ConfigGenerator:
 
 if __name__ == '__main__':
     supported_modes = ["sweep", "long_run", "new_geoms", "multiple_runs", "figure2", "missing", "simple",
-                       "passenger_fairness", "region_pref", "distance_pref", "passenger_pref", "two_sided",
-                       "safety_objective",
+                       "passenger_fairness", "nearest_baseline",
+                       "region_pref", "distance_pref", "passenger_pref", "two_sided",
+                       "safety_objective", "safety_objective_two_sided",
                        "calibrate_supply", "calibrate_safety", "calibrate_flexibility", "calibrate_region"]
     if len(sys.argv) < 2 or sys.argv[1] not in supported_modes:
         print(f"Please give a mode argument: {', '.join(supported_modes)}")
@@ -630,6 +632,35 @@ if __name__ == '__main__':
                     f.write(content)
                 print(f"Successfully wrote {fname}")
 
+    elif mode == "nearest_baseline":
+        # Baseline nearest-matching sweep over both taxi density (d) and demand ratio (R), with breaks enabled.
+        # Use this to establish a preference-free reference before comparing preference-aware algorithms.
+        # Usage: python generate_configs.py nearest_baseline <base_config> [days] [geom]
+        # Example: python generate_configs.py nearest_baseline big_city_base_balanced_calibrated.conf 5 10
+        # Defaults: days=5, geom=10
+        if len(sys.argv) < 3:
+            print("Usage: python generate_configs.py nearest_baseline <base_config> [days] [geom]")
+            print("Example: python generate_configs.py nearest_baseline big_city_base_balanced_calibrated.conf 5 10")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        days = float(sys.argv[3]) if len(sys.argv) > 3 else 5
+        geom = int(sys.argv[4]) if len(sys.argv) > 4 else 10
+
+        gen = ConfigGenerator(base_config, days=days)
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
+        R_list = [0.2, 0.5, 1.0]
+
+        for d in d_list:
+            for R in R_list:
+                conf = gen.generate_config(d, R, "nearest", geom, 1)
+                if conf is not None:
+                    fname, content = gen.dump_config(conf)
+                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                        f.write(content)
+                    print(f"Successfully wrote {fname}")
+
     elif mode == "region_pref":
         # Usage: python generate_configs.py region_pref <base_config> <regions_file> [days] [geom] [max_declines]
         # Generates configs sweeping R for nearest_region_pref algorithm.
@@ -647,19 +678,21 @@ if __name__ == '__main__':
         max_declines = int(sys.argv[6]) if len(sys.argv) > 6 else None
 
         gen = ConfigGenerator(base_config, days=days)
-        d = np.sqrt(1e6 / 15)  # taxi density ~15/km²
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
         R_list = [0.2, 0.5, 1.0]
 
-        for R in R_list:
-            for behav in range(4):
-                conf = gen.generate_config(d, R, "nearest_region_pref", geom, behav, regions_file=regions_file)
-                if conf is not None:
-                    if max_declines is not None:
-                        conf["max_declines"] = max_declines
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+        for d in d_list:
+            for R in R_list:
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, "nearest_region_pref", geom, behav, regions_file=regions_file)
+                    if conf is not None:
+                        if max_declines is not None:
+                            conf["max_declines"] = max_declines
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "distance_pref":
         # Usage: python generate_configs.py distance_pref <base_config> [days] [geom] [max_declines]
@@ -675,19 +708,21 @@ if __name__ == '__main__':
         max_declines = int(sys.argv[5]) if len(sys.argv) > 5 else None
 
         gen = ConfigGenerator(base_config, days=days)
-        d = np.sqrt(1e6 / 15)  # taxi density ~15/km²
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
         R_list = [0.2, 0.5, 1.0]
 
-        for R in R_list:
-            for behav in range(4):
-                conf = gen.generate_config(d, R, "nearest_distance_pref", geom, behav)
-                if conf is not None:
-                    if max_declines is not None:
-                        conf["max_declines"] = max_declines
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+        for d in d_list:
+            for R in R_list:
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, "nearest_distance_pref", geom, behav)
+                    if conf is not None:
+                        if max_declines is not None:
+                            conf["max_declines"] = max_declines
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "passenger_pref":
         # Passenger preference mode: sweeps R across three algorithms to compare
@@ -705,22 +740,24 @@ if __name__ == '__main__':
         max_declines = int(sys.argv[5]) if len(sys.argv) > 5 else None
 
         gen = ConfigGenerator(base_config, days=days)
-        d = np.sqrt(1e6 / 15)  # taxi density ~15/km²
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
         R_list = [0.2, 0.5, 1.0]
         # Compare baseline, passenger-only, and both two-sided variants
         algs = ["nearest", "nearest_passenger_pref", "nearest_two_sided_dist_pass_pref",
                 "nearest_two_sided_region_pass_pref"]
 
-        for R in R_list:
-            for alg in algs:
-                conf = gen.generate_config(d, R, alg, geom, 1)
-                if conf is not None:
-                    if max_declines is not None:
-                        conf["max_declines"] = max_declines
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+        for d in d_list:
+            for R in R_list:
+                for alg in algs:
+                    conf = gen.generate_config(d, R, alg, geom, 1)
+                    if conf is not None:
+                        if max_declines is not None:
+                            conf["max_declines"] = max_declines
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "two_sided":
         # Usage: python generate_configs.py two_sided <base_config> <variant> [days] [geom] [max_declines]
@@ -743,18 +780,20 @@ if __name__ == '__main__':
 
         alg = valid_variants[variant]
         gen = ConfigGenerator(base_config, days=days)
-        d = np.sqrt(1e6 / 15)  # taxi density ~15/km²
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
         R_list = [0.2, 0.5, 1.0]
 
-        for R in R_list:
-            conf = gen.generate_config(d, R, alg, geom, 1)
-            if conf is not None:
-                if max_declines is not None:
-                    conf["max_declines"] = max_declines
-                fname, content = gen.dump_config(conf)
-                with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                    f.write(content)
-                print(f"Successfully wrote {fname}")
+        for d in d_list:
+            for R in R_list:
+                conf = gen.generate_config(d, R, alg, geom, 1)
+                if conf is not None:
+                    if max_declines is not None:
+                        conf["max_declines"] = max_declines
+                    fname, content = gen.dump_config(conf)
+                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                        f.write(content)
+                    print(f"Successfully wrote {fname}")
 
     elif mode == "safety_objective":
         # Usage: python generate_configs.py safety_objective <base_config> [days] [geom]
@@ -769,17 +808,19 @@ if __name__ == '__main__':
         geom = int(sys.argv[4]) if len(sys.argv) > 4 else 10
 
         gen = ConfigGenerator(base_config, days=days)
-        d = np.sqrt(1e6 / 15)  # taxi density ~15/km²
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
         R_list = [0.2, 0.5, 1.0]
 
-        for R in R_list:
-            for behav in range(4):
-                conf = gen.generate_config(d, R, "safety_objective", geom, behav)
-                if conf is not None:
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+        for d in d_list:
+            for R in R_list:
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, "safety_objective", geom, behav)
+                    if conf is not None:
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "simple":
         # Simple mode: creates a single config file with default parameters
@@ -813,6 +854,40 @@ if __name__ == '__main__':
         else:
             print("Failed to generate config")
             sys.exit(1)
+
+    elif mode == "safety_objective_two_sided":
+        # System safety-objective matching combined with two-sided preferences:
+        # region-popularity driver preference + passenger safety-score preference.
+        # Requires a regions file so driver region-popularity is meaningful.
+        # Usage: python generate_configs.py safety_objective_two_sided <base_config> <regions_file> [days] [geom] [max_declines]
+        # Example: python generate_configs.py safety_objective_two_sided big_city_base_balanced_calibrated.conf regions_big_city_balanced.json 5 10
+        if len(sys.argv) < 4:
+            print("Usage: python generate_configs.py safety_objective_two_sided <base_config> <regions_file> [days] [geom] [max_declines]")
+            print("Example: python generate_configs.py safety_objective_two_sided big_city_base_balanced_calibrated.conf regions_big_city_balanced.json 5 10")
+            sys.exit(1)
+
+        base_config = sys.argv[2]
+        regions_file = sys.argv[3]
+        days = float(sys.argv[4]) if len(sys.argv) > 4 else 5
+        geom = int(sys.argv[5]) if len(sys.argv) > 5 else 10
+        max_declines = int(sys.argv[6]) if len(sys.argv) > 6 else None
+
+        gen = ConfigGenerator(base_config, days=days)
+        taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
+        d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
+        R_list = [0.2, 0.5, 1.0]
+
+        for d in d_list:
+            for R in R_list:
+                conf = gen.generate_config(d, R, "safety_objective_two_sided", geom, 1,
+                                           regions_file=regions_file)
+                if conf is not None:
+                    if max_declines is not None:
+                        conf["max_declines"] = max_declines
+                    fname, content = gen.dump_config(conf)
+                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                        f.write(content)
+                    print(f"Successfully wrote {fname}")
 
     elif mode == "calibrate_supply":
         # Calibration Layer 1/2: nearest algorithm, no breaks, constant demand rate.

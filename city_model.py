@@ -1648,6 +1648,117 @@ class Simulation:
                         )
                         self.assign_request(request_id, best_taxi_id)
 
+            case "safety_objective_two_sided":
+                # System safety-objective matching with two-sided preferences (region driver + passenger).
+                # System layer : regions ordered least-safe → most-safe; candidates sorted by safety
+                #                score descending so the safest available taxi is tried first.
+                # Individual layer : driver region-popularity preference (_region_acceptance_probability)
+                #                    and passenger safety-score preference (_passenger_acceptance_prob)
+                #                    applied within that ordering.
+                # Driver declines are permanent for this request (added to declined_taxi_ids).
+                # Passenger rejections are not permanent - the threshold relaxes each round.
+
+                # Drain the pending deque into a flat list preserving arrival order
+                all_pending = []
+                while self.requests_pending_deque:
+                    all_pending.append(self.requests_pending_deque.popleft())
+
+                def _process_sot(request_id):
+                    r = self.requests[request_id]
+                    all_within = self.city.find_nearest_available_taxis(
+                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        mode="circle",
+                        radius=self.city.hard_limit
+                    )
+                    candidate_ids = sorted(
+                        [t for t in all_within if t not in r.declined_taxi_ids],
+                        key=lambda tid: self.taxis[tid].safety_score,
+                        reverse=True  # safest taxi offered first
+                    )
+                    if not candidate_ids:
+                        r.last_no_match_reason = 'no_taxi_available' if not all_within else 'driver_declined'
+                        self.requests_pending_deque_temporary.append(request_id)
+                        return
+
+                    p_driver = self._region_acceptance_probability(r)  # same for all taxis for this request
+                    assigned = False
+                    any_driver_willing = False
+
+                    for taxi_id in candidate_ids:
+                        taxi = self.taxis[taxi_id]
+
+                        # driver side: region popularity preference
+                        forced_driver = (
+                            self.max_declines is not None and
+                            taxi.decline_count >= self.max_declines
+                        )
+                        driver_accepts = forced_driver or self.rng.random() < p_driver
+                        if not driver_accepts:
+                            taxi.decline_count += 1
+                            taxi.total_declines += 1
+                            r.declined_taxi_ids.add(taxi_id)
+                            continue
+
+                        # passenger side: safety-score preference
+                        any_driver_willing = True
+                        score = self._passenger_score(r, taxi)
+                        p_passenger = self._passenger_acceptance_prob(r, score)
+                        if self.rng.random() < p_passenger:
+                            taxi.decline_count = 0
+                            self.assign_request(request_id, taxi_id)
+                            assigned = True
+                            break
+
+                    if assigned:
+                        r.last_no_match_reason = None
+                    else:
+                        if any_driver_willing:
+                            r.last_no_match_reason = 'passenger_declined'
+                        elif candidate_ids:
+                            r.last_no_match_reason = 'driver_declined'
+                        else:
+                            r.last_no_match_reason = 'no_taxi_available'
+                        self.requests_pending_deque_temporary.append(request_id)
+
+                if not self.regions:
+                    # No region config: process in arrival order
+                    for request_id in all_pending:
+                        _process_sot(request_id)
+                else:
+                    # Group requests by pickup region, preserving arrival order
+                    region_requests = {region["id"]: [] for region in self.regions}
+                    unregioned = []
+                    for request_id in all_pending:
+                        r = self.requests[request_id]
+                        matched = None
+                        for region in self.regions:
+                            if (region["x_min"] <= r.ox <= region["x_max"] and
+                                    region["y_min"] <= r.oy <= region["y_max"]):
+                                matched = region["id"]
+                                break
+                        if matched is not None:
+                            region_requests[matched].append(request_id)
+                        else:
+                            unregioned.append(request_id)
+
+                    # Compute avg safety score of available taxis per region
+                    region_safety = self.compute_region_safety_averages()
+
+                    def _supply_safety_sot(region):
+                        avg = region_safety.get(region["id"], {}).get("avg_safety_score")
+                        return avg if avg is not None else float('-inf')
+
+                    sorted_regions = sorted(self.regions, key=_supply_safety_sot)
+
+                    # Process regions from least-safe to most-safe
+                    for region in sorted_regions:
+                        for request_id in region_requests[region["id"]]:
+                            _process_sot(request_id)
+
+                    # Requests outside any region served last
+                    for request_id in unregioned:
+                        _process_sot(request_id)
+
             case _:
                 raise ValueError("I know of no such assignment mode! Please provide a valid one!")
 
