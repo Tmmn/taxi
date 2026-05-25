@@ -743,21 +743,17 @@ if __name__ == '__main__':
         taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
         d_list = [np.sqrt(1e6 / rho) for rho in taxi_densities]
         R_list = [0.2, 0.5, 1.0]
-        # Compare baseline, passenger-only, and both two-sided variants
-        algs = ["nearest", "nearest_passenger_pref", "nearest_two_sided_dist_pass_pref",
-                "nearest_two_sided_region_pass_pref"]
 
         for d in d_list:
             for R in R_list:
-                for alg in algs:
-                    conf = gen.generate_config(d, R, alg, geom, 1)
-                    if conf is not None:
-                        if max_declines is not None:
-                            conf["max_declines"] = max_declines
-                        fname, content = gen.dump_config(conf)
-                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                            f.write(content)
-                        print(f"Successfully wrote {fname}")
+                conf = gen.generate_config(d, R, "nearest_passenger_pref", geom, 1)
+                if conf is not None:
+                    if max_declines is not None:
+                        conf["max_declines"] = max_declines
+                    fname, content = gen.dump_config(conf)
+                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                        f.write(content)
+                    print(f"Successfully wrote {fname}")
 
     elif mode == "two_sided":
         # Usage: python generate_configs.py two_sided <base_config> <variant> [days] [geom] [max_declines]
