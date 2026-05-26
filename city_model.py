@@ -2258,6 +2258,7 @@ class Simulation:
         region_safety_rows = []
 
         time1 = time()
+        total_time_start = time1
         for i in range(self.num_iter):
             # tick the clock
             for _ in range(self.batch_size):
@@ -2345,6 +2346,11 @@ class Simulation:
                     shutil.copyfileobj(f1, f2)
             os.remove(data_path + '/run_' + run_id + file)
 
+        total_time_end = time()
+        overall_time = total_time_end - total_time_start
+        avg_time_per_batch = overall_time / self.num_iter
+        print(f"Overall simulation time: {overall_time:.2f} sec.")
+        print(f"Average time per batch: {avg_time_per_batch:.2f} sec/batch.")
         print("Done.")
 
     def step_time(self, handler):
