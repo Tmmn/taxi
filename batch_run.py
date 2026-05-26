@@ -80,7 +80,8 @@ if __name__ == "__main__":
             remaining = total - completed
 
             if success:
-                print(f"Successfully finished {path} ({remaining} left). Log: {log_path}")
+                print(f"Successfully finished {path} ({remaining} left).\n"
+                      f"    Log: {log_path}")
             else:
                 print(output)
                 if log_path:
