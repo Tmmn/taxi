@@ -323,23 +323,35 @@ class City:
 
         """
 
-        # distance along the x and the y axis
-        d = dict(zip(['x', 'y'], np.array(destination) - np.array(source)))
+        dx = destination[0] - source[0]
+        dy = destination[1] - source[1]
 
-        # create a sequence of "x"-es and "y"-s
-        # we are going to shuffle this sequence
-        # to get a random order of "x" and "y" direction steps
-        sequence = ['x'] * int(np.abs(d['x'])) + ['y'] * int(np.abs(d['y']))
+        # create a sequence of "x"- and "y"-steps and shuffle it to get a random shortest path
+        sequence = ['x'] * abs(dx) + ['y'] * abs(dy)
         shuffle(sequence)
 
-        # source is included in the path
+        if dx == 0:
+            step_x = 0
+        elif dx > 0:
+            step_x = 1
+        else:
+            step_x = -1
+
+        if dy == 0:
+            step_y = 0
+        elif dy > 0:
+            step_y = 1
+        else:
+            step_y = -1
+
+        x, y = source[0], source[1]
         path = [source]
         for item in sequence:
-            # we add one step in the right direction based on the last position
-            path.append([
-                np.sign(d[item]) * int(item == "x") + path[-1][0],
-                np.sign(d[item]) * int(item == "y") + path[-1][1]
-            ])
+            if item == "x":
+                x += step_x
+            else:
+                y += step_y
+            path.append([x, y])
 
         return path
 
@@ -492,13 +504,12 @@ class City:
         p = set()
 
         while depth < radius:
-            # take the next nodes
-            ta = set()
             for node in tree[depth]:
-                ta.update(self.A[node])
-            p.update(ta)
+                available_taxis = self.A[node]
+                if available_taxis:
+                    p.update(available_taxis)
 
-            if mode == "nearest" and ta:
+            if mode == "nearest" and p:
                 break
 
             depth += 1

@@ -160,6 +160,7 @@ class Taxi:
 
     x: int
     y: int
+    cell: int | None
     taxi_id: int
     available: bool
     to_request: bool
@@ -214,6 +215,7 @@ class Taxi:
 
             self.x = coords[0]
             self.y = coords[1]
+            self.cell = None
 
             self.taxi_id = taxi_id
 
@@ -349,6 +351,7 @@ class Request:
     oy: int
     dx: int
     dy: int
+    origin_cell: int | None
     request_id: int
     taxi_id: int | None
     timestamps: dict[str, int | None]
@@ -389,6 +392,7 @@ class Request:
             # desired dropoff coordinates
             self.dx = dcoords[0]
             self.dy = dcoords[1]
+            self.origin_cell = None
 
             # id
             self.request_id = request_id
@@ -658,6 +662,7 @@ class Simulation:
     satisfaction_pref_mismatch_delta: float
     regions: list[dict]
     region_popularity_grid: np.ndarray | None
+    region_lookup_grid: np.ndarray | None
     region_default_popularity: float
     region_match_mode: str
     max_declines: int | None
@@ -886,8 +891,10 @@ class Simulation:
             self.region_match_mode = region_config.get("match_mode", "origin")
             self.regions = region_config.get("regions", [])
             self._build_region_popularity_grid(region_config)
+            self._build_region_lookup_grid(region_config)
         else:
             self.region_popularity_grid = None
+            self.region_lookup_grid = None
             self.region_default_popularity = 100.0
             self.region_match_mode = "origin"
             self.regions = []
@@ -1040,11 +1047,12 @@ class Simulation:
         tx.satisfaction_score = float(self.rng.uniform(self.satisfaction_initial_min, self.satisfaction_initial_max))
         tx.last_satisfaction_delta = 0.0
         tx.home = home
+        tx.cell = self.city.coordinate_dict_ij_to_c[tx.x][tx.y]
 
         # add to taxi storage
         self.taxis[self.latest_taxi_id] = tx
         # add to available taxi matrix
-        self.city.A[self.city.coordinate_dict_ij_to_c[tx.x][tx.y]].add(self.latest_taxi_id)
+        self.city.A[tx.cell].add(self.latest_taxi_id)
         # add to available taxi storage
         self.taxis_available[self.latest_taxi_id] = tx
         # increase counter
@@ -1062,6 +1070,7 @@ class Simulation:
         # origin and destination coordinates
         ox, oy, dx, dy = self.city.create_one_request_coord()
         r = Request([ox, oy], [dx, dy], self.latest_request_id, self.time)
+        r.origin_cell = self.city.coordinate_dict_ij_to_c[ox][oy]
 
         # sample passenger type and preference weights
         ptype = str(self.rng.choice(self.passenger_pref_types, p=self.passenger_pref_probs))
@@ -1105,22 +1114,23 @@ class Simulation:
         #        print("Filling path memory, Taxi "+str(taxi_id)+". Path ",path)
         t.next_destination.extend(path)
 
-        # put object back to its place
-        self.taxis[taxi_id] = t
 
     # TODO: make taxis drive home instead of teleporting (do not forget the going_home in dropoff_request() method!)
     def go_home_everybody(self):
         """
         Drop requests that are currently executing, and set taxis as available at their home locations.
         """
-        for taxi_id in self.taxis:
+        taxi_ids = set(self.taxis_available) | self.taxis_to_destination | self.taxis_to_request | self.taxis_on_break
+        for taxi_id in taxi_ids:
             tx = self.taxis[taxi_id]
 
             if taxi_id in self.taxis_available:
                 # (magic wand) Apparate taxi home!
-                self.city.A[self.city.coordinate_dict_ij_to_c[tx.x][tx.y]].remove(taxi_id)
-                self.city.A[self.city.coordinate_dict_ij_to_c[tx.home[0]][tx.home[1]]].add(taxi_id)
+                home_cell = self.city.coordinate_dict_ij_to_c[tx.home[0]][tx.home[1]]
+                self.city.A[tx.cell].remove(taxi_id)
+                self.city.A[home_cell].add(taxi_id)
                 tx.x, tx.y = tx.home
+                tx.cell = home_cell
 
             if taxi_id in self.taxis_to_destination:
                 # if somebody is sitting in it, finish request
@@ -1133,8 +1143,7 @@ class Simulation:
             if taxi_id in self.taxis_on_break:
                 # update position so the taxi returns from break at home, not mid-city
                 tx.x, tx.y = tx.home
-
-            self.taxis[taxi_id] = tx
+                tx.cell = self.city.coordinate_dict_ij_to_c[tx.home[0]][tx.home[1]]
 
     def cruise(self, taxi_id):
         return None
@@ -1152,7 +1161,7 @@ class Simulation:
         r.taxi_id = taxi_id
 
         # remove taxi from the available ones
-        self.city.A[self.city.coordinate_dict_ij_to_c[t.x][t.y]].remove(taxi_id)
+        self.city.A[t.cell].remove(taxi_id)
         del self.taxis_available[taxi_id]
         t.with_passenger = False
         t.available = False
@@ -1190,10 +1199,6 @@ class Simulation:
         else:
             self._apply_satisfaction_delta(t, self.satisfaction_pref_mismatch_delta)
 
-        # update taxi state in taxi storage
-        self.taxis[taxi_id] = t
-        # update request state
-        self.requests[request_id] = r
 
         if self.log:
             print("\tM request " + str(request_id) + " taxi " + str(taxi_id))
@@ -1242,7 +1247,7 @@ class Simulation:
                     r = self.requests[request_id]
                     # search for nearest free taxis
                     possible_taxi_ids = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1263,7 +1268,7 @@ class Simulation:
                     r = self.requests[request_id]
                     # search for nearest free taxis
                     possible_taxi_ids = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy])
+                        r.origin_cell)
                     # if there were any taxis near
                     if len(possible_taxi_ids) > 0:
                         # select taxi
@@ -1290,12 +1295,13 @@ class Simulation:
                     r = self.requests[request_id]
                     # find nearest vehicles in a radius
                     possible_taxi_ids = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit)
+                    possible_taxi_ids_set = set(possible_taxi_ids)
                     hit = 0
                     for t in ta_list:
-                        if t in possible_taxi_ids:
+                        if t in possible_taxi_ids_set:
                             # on first hit
                             # make assignment
                             self.assign_request(request_id, t)
@@ -1310,7 +1316,7 @@ class Simulation:
                     r = self.requests[request_id]
 
                     all_within = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1352,7 +1358,7 @@ class Simulation:
                     r = self.requests[request_id]
 
                     all_within = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1400,7 +1406,7 @@ class Simulation:
                     r = self.requests[request_id]
 
                     all_within = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1437,7 +1443,7 @@ class Simulation:
                     r = self.requests[request_id]
 
                     all_within = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1504,7 +1510,7 @@ class Simulation:
                     r = self.requests[request_id]
 
                     all_within = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1565,16 +1571,15 @@ class Simulation:
                 # Each request is matched with the safest available taxi within hard_limit radius - no preferences applied.
 
                 # Drain the pending deque into a flat list preserving arrival order
-                all_pending = []
-                while self.requests_pending_deque:
-                    all_pending.append(self.requests_pending_deque.popleft())
+                all_pending = list(self.requests_pending_deque)
+                self.requests_pending_deque.clear()
 
                 if not self.regions:
                     # No region config: assign safest taxi within radius in arrival order
                     for request_id in all_pending:
                         r = self.requests[request_id]
                         possible_taxi_ids = self.city.find_nearest_available_taxis(
-                            self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                            r.origin_cell,
                             mode="circle",
                             radius=self.city.hard_limit
                         )
@@ -1592,12 +1597,7 @@ class Simulation:
                     unregioned = []
                     for request_id in all_pending:
                         r = self.requests[request_id]
-                        matched = None
-                        for region in self.regions:
-                            if (region["x_min"] <= r.ox <= region["x_max"] and
-                                    region["y_min"] <= r.oy <= region["y_max"]):
-                                matched = region["id"]
-                                break
+                        matched = self.region_lookup_grid[r.ox, r.oy]
                         if matched is not None:
                             region_requests[matched].append(request_id)
                         else:
@@ -1618,7 +1618,7 @@ class Simulation:
                         for request_id in region_requests[region["id"]]:
                             r = self.requests[request_id]
                             possible_taxi_ids = self.city.find_nearest_available_taxis(
-                                self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                                r.origin_cell,
                                 mode="circle",
                                 radius=self.city.hard_limit
                             )
@@ -1635,7 +1635,7 @@ class Simulation:
                     for request_id in unregioned:
                         r = self.requests[request_id]
                         possible_taxi_ids = self.city.find_nearest_available_taxis(
-                            self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                            r.origin_cell,
                             mode="circle",
                             radius=self.city.hard_limit
                         )
@@ -1659,14 +1659,13 @@ class Simulation:
                 # Passenger rejections are not permanent - the threshold relaxes each round.
 
                 # Drain the pending deque into a flat list preserving arrival order
-                all_pending = []
-                while self.requests_pending_deque:
-                    all_pending.append(self.requests_pending_deque.popleft())
+                all_pending = list(self.requests_pending_deque)
+                self.requests_pending_deque.clear()
 
                 def _process_sot(request_id):
                     r = self.requests[request_id]
                     all_within = self.city.find_nearest_available_taxis(
-                        self.city.coordinate_dict_ij_to_c[r.ox][r.oy],
+                        r.origin_cell,
                         mode="circle",
                         radius=self.city.hard_limit
                     )
@@ -1730,12 +1729,7 @@ class Simulation:
                     unregioned = []
                     for request_id in all_pending:
                         r = self.requests[request_id]
-                        matched = None
-                        for region in self.regions:
-                            if (region["x_min"] <= r.ox <= region["x_max"] and
-                                    region["y_min"] <= r.oy <= region["y_max"]):
-                                matched = region["id"]
-                                break
+                        matched = self.region_lookup_grid[r.ox, r.oy]
                         if matched is not None:
                             region_requests[matched].append(request_id)
                         else:
@@ -1848,6 +1842,15 @@ class Simulation:
             y_min, y_max = region["y_min"], region["y_max"]
             self.region_popularity_grid[x_min:x_max + 1, y_min:y_max + 1] = float(region["popularity"])
 
+    def _build_region_lookup_grid(self, region_config):
+        self.region_lookup_grid = np.full((self.city.n, self.city.m), None, dtype=object)
+        # Iterate in reverse so the first-listed region wins for overlapping cells,
+        # matching the original linear-scan behaviour (which broke on first match).
+        for region in reversed(region_config.get("regions", [])):
+            x_min, x_max = region["x_min"], region["x_max"]
+            y_min, y_max = region["y_min"], region["y_max"]
+            self.region_lookup_grid[x_min:x_max + 1, y_min:y_max + 1] = region["id"]
+
     def _region_acceptance_probability(self, request):
         """Returns acceptance probability in [0, 1] based on region popularity."""
         if self.region_popularity_grid is None:
@@ -1926,9 +1929,6 @@ class Simulation:
         # record taxi safety at pickup time
         r.driver_safety_score_pickup = float(t.safety_score)
 
-        # update request and taxi instances
-        self.requests[request_id] = r
-        self.taxis[r.taxi_id] = t
         if self.log:
             print('\tP ' + "request " + str(request_id) + ' taxi ' + str(t.taxi_id))
 
@@ -1988,19 +1988,16 @@ class Simulation:
             # (magic wand) Apparate taxi home!
             # TODO: taxis are teleported...
             t.x, t.y = t.home
+            t.cell = self.city.coordinate_dict_ij_to_c[t.home[0]][t.home[1]]
 
         # update global availability containers
         self.taxis_available[r.taxi_id] = t
-        self.city.A[self.city.coordinate_dict_ij_to_c[t.x][t.y]].add(r.taxi_id)
+        self.city.A[t.cell].add(r.taxi_id)
 
         # update taxi internal states
         t.with_passenger = False
         t.available = True
         t.actual_request_executing = None
-
-        # update request and taxi instances in global containers
-        self.requests[request_id] = r
-        self.taxis[r.taxi_id] = t
 
         if r.mode in ('done', 'dropped'):
             self._requests_done_buffer.append(r)
@@ -2027,19 +2024,25 @@ class Simulation:
         """
         if regions is None:
             regions = self.regions
+        if not regions or self.region_lookup_grid is None:
+            return {}
         result = {}
+        sums = {region["id"]: 0.0 for region in regions}
+        counts = {region["id"]: 0 for region in regions}
+        for taxi_id in self.taxis:
+            taxi = self.taxis[taxi_id]
+            region_id = self.region_lookup_grid[taxi.x, taxi.y]
+            if region_id is None or region_id not in sums:
+                continue
+            sums[region_id] += float(taxi.safety_score)
+            counts[region_id] += 1
+
         for region in regions:
             region_id = region["id"]
-            x_min, x_max = region["x_min"], region["x_max"]
-            y_min, y_max = region["y_min"], region["y_max"]
-            scores = []
-            for taxi_id in self.taxis:
-                taxi = self.taxis[taxi_id]
-                if x_min <= taxi.x <= x_max and y_min <= taxi.y <= y_max:
-                    scores.append(taxi.safety_score)
+            count = counts[region_id]
             result[region_id] = {
-                "avg_safety_score": float(np.mean(scores)) if scores else None,
-                "taxi_count": len(scores),
+                "avg_safety_score": (sums[region_id] / count) if count else None,
+                "taxi_count": count,
             }
         return result
 
@@ -2183,7 +2186,6 @@ class Simulation:
                         t.initial_safety_score - t.break_start_safety_score) * recovery_fraction
             t.safety_score = min(t.initial_safety_score, max(self.safety_score_min, target))
 
-            self.taxis[taxi_id] = t
             return
 
         try:
@@ -2195,6 +2197,9 @@ class Simulation:
 
             t.x = move[0]
             t.y = move[1]
+            new_cell = self.city.coordinate_dict_ij_to_c[t.x][t.y]
+            old_cell = t.cell
+            t.cell = new_cell
 
             if t.with_passenger:
                 t.time_serving += 1
@@ -2205,9 +2210,9 @@ class Simulation:
                     t.time_to_request += 1
 
             # move available taxis on availability grid
-            if t.available:
-                self.city.A[self.city.coordinate_dict_ij_to_c[old_x][old_y]].remove(taxi_id)
-                self.city.A[self.city.coordinate_dict_ij_to_c[t.x][t.y]].add(taxi_id)
+            if t.available and (old_x != t.x or old_y != t.y):
+                self.city.A[old_cell].remove(taxi_id)
+                self.city.A[new_cell].add(taxi_id)
             if self.log:
                 print("\tF moved taxi " + str(taxi_id) + " remaining path ", list(t.next_destination), "\n", end="")
         except IndexError:
@@ -2222,8 +2227,6 @@ class Simulation:
 
         if not is_serving:
             self._apply_satisfaction_delta(t, self.satisfaction_change_waiting_rate)
-
-        self.taxis[taxi_id] = t
 
     def run_batch(self, run_id, data_path='results'):
         """
@@ -2276,7 +2279,7 @@ class Simulation:
 
                 # write one-time static taxi attributes (preferences, shift cohort)
                 taxi_static = {
-                    "taxi_ids": [t for t in self.taxis],
+                    "taxi_ids": list(self.taxis),
                     "route_length_pref": [self.taxis[t].route_length_pref for t in self.taxis],
                     "pref_strength_route": [round(self.taxis[t].pref_strength_route, 4) for t in self.taxis],
                     "nonpreferred_accept_ceiling": [round(self.taxis[t].nonpreferred_accept_ceiling, 4) for t in self.taxis],
@@ -2378,7 +2381,6 @@ class Simulation:
                 print('\t' + mode + ': ' + str(req_counter[mode]))
             print("\n")
             print("Requests pending: ")
-            print('\t', self.requests_pending)
             print('\t', self.requests_pending_deque)
             print('\t', self.requests_pending_deque_temporary)
             print("Requests in progress: ")
@@ -2444,10 +2446,8 @@ class Simulation:
                 r = self.requests[request_id]
                 r.mode = 'dropped'
                 r.cancellation_reason = r.last_no_match_reason if r.last_no_match_reason else 'patience_exceeded'
-                self.requests[request_id] = r
                 self._requests_done_buffer.append(r)
 
-        self.requests_pending = set(self.requests_pending_deque)
 
         # generate requests
         new_requests = set()

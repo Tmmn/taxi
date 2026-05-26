@@ -252,7 +252,7 @@ def put_taxi_on_break(sim: Simulation, t: Taxi) -> None:
     if not t.available or t.on_break:
         return
 
-    sim.city.A[sim.city.coordinate_dict_ij_to_c[t.x][t.y]].remove(t.taxi_id)
+    sim.city.A[t.cell].remove(t.taxi_id)
     del sim.taxis_available[t.taxi_id]
 
     t.on_break = True
@@ -315,9 +315,7 @@ def return_taxi_from_break(sim: Simulation, t: Taxi) -> None:
 
     sim.taxis_on_break.remove(t.taxi_id)
     sim.taxis_available[t.taxi_id] = t
-    sim.city.A[sim.city.coordinate_dict_ij_to_c[t.x][t.y]].add(t.taxi_id)
-
-    sim.taxis[t.taxi_id] = t
+    sim.city.A[t.cell].add(t.taxi_id)
 
     if sim.log:
         print(f"\ttaxi {t.taxi_id} returning from break")
