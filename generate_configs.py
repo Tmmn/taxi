@@ -758,23 +758,37 @@ if __name__ == '__main__':
                         print(f"Successfully wrote {fname}")
 
     elif mode == "two_sided":
-        # Usage: python generate_configs.py two_sided <base_config> <variant> [days] [geom] [max_declines]
-        # variant: "dist" -> nearest_two_sided_dist_pass_pref
-        #          "region" -> nearest_two_sided_region_pass_pref
+        # Usage:
+        #   python generate_configs.py two_sided <base_config> dist [days] [geom] [max_declines]
+        #   python generate_configs.py two_sided <base_config> region <regions_file> [days] [geom] [max_declines]
+        # variant: "dist"   -> nearest_two_sided_dist_pass_pref
+        #          "region" -> nearest_two_sided_region_pass_pref (requires regions file)
         # Generates configs sweeping R for the chosen two-sided matching algorithm.
         valid_variants = {"dist": "nearest_two_sided_dist_pass_pref", "region": "nearest_two_sided_region_pass_pref"}
         if len(sys.argv) < 4 or sys.argv[3] not in valid_variants:
-            print("Usage: python generate_configs.py two_sided <base_config> <variant> [days] [geom] [max_declines]")
+            print("Usage: python generate_configs.py two_sided <base_config> dist [days] [geom] [max_declines]")
+            print("   or: python generate_configs.py two_sided <base_config> region <regions_file> [days] [geom] [max_declines]")
             print("  variant: 'dist'   -> nearest_two_sided_dist_pass_pref")
-            print("           'region' -> nearest_two_sided_region_pass_pref")
+            print("           'region' -> nearest_two_sided_region_pass_pref (requires regions file)")
             print("Example: python generate_configs.py two_sided big_city_base.conf dist 5 10 3")
             sys.exit(1)
 
         base_config = sys.argv[2]
         variant = sys.argv[3]
-        days = int(sys.argv[4]) if len(sys.argv) > 4 else 5
-        geom = int(sys.argv[5]) if len(sys.argv) > 5 else 10
-        max_declines = int(sys.argv[6]) if len(sys.argv) > 6 else None
+        if variant == "region":
+            if len(sys.argv) < 5:
+                print("Usage: python generate_configs.py two_sided <base_config> region <regions_file> [days] [geom] [max_declines]")
+                print("Example: python generate_configs.py two_sided big_city_base.conf region regions_big_city_balanced.json 5 10 3")
+                sys.exit(1)
+            regions_file = sys.argv[4]
+            days = int(sys.argv[5]) if len(sys.argv) > 5 else 5
+            geom = int(sys.argv[6]) if len(sys.argv) > 6 else 10
+            max_declines = int(sys.argv[7]) if len(sys.argv) > 7 else None
+        else:
+            regions_file = None
+            days = int(sys.argv[4]) if len(sys.argv) > 4 else 5
+            geom = int(sys.argv[5]) if len(sys.argv) > 5 else 10
+            max_declines = int(sys.argv[6]) if len(sys.argv) > 6 else None
 
         alg = valid_variants[variant]
         gen = ConfigGenerator(base_config, days=days)
@@ -785,7 +799,7 @@ if __name__ == '__main__':
         for d in d_list:
             for R in R_list:
                 for behav in range(4):
-                    conf = gen.generate_config(d, R, alg, geom, behav)
+                    conf = gen.generate_config(d, R, alg, geom, behav, regions_file=regions_file)
                     if conf is not None:
                         if max_declines is not None:
                             conf["max_declines"] = max_declines
@@ -795,16 +809,28 @@ if __name__ == '__main__':
                         print(f"Successfully wrote {fname}")
 
     elif mode == "safety_objective":
-        # Usage: python generate_configs.py safety_objective <base_config> [days] [geom]
-        # Generates configs sweeping R for the safety_objective matching algorithm.
+        # Usage: python generate_configs.py safety_objective <base_config> [regions_file] [days] [geom]
+        # If the third argument ends with '.json' it is treated as a regions file (enabling region-aware
+        # ordering); otherwise it is treated as [days].  Omitting the regions file makes the algorithm
+        # fall back to global arrival-order (no regional prioritisation).
+        # Example (region-aware): python generate_configs.py safety_objective big_city_base.conf regions_big_city_balanced.json 5 10
+        # Example (global):       python generate_configs.py safety_objective big_city_base.conf 5 10
         if len(sys.argv) < 3:
-            print("Usage: python generate_configs.py safety_objective <base_config> [days] [geom]")
-            print("Example: python generate_configs.py safety_objective big_city_base.conf 5 10")
+            print("Usage: python generate_configs.py safety_objective <base_config> [regions_file] [days] [geom]")
+            print("Example: python generate_configs.py safety_objective big_city_base.conf regions_big_city_balanced.json 5 10")
             sys.exit(1)
 
         base_config = sys.argv[2]
-        days = int(sys.argv[3]) if len(sys.argv) > 3 else 5
-        geom = int(sys.argv[4]) if len(sys.argv) > 4 else 10
+
+        # Detect optional regions_file by checking whether argv[3] ends with '.json'
+        if len(sys.argv) > 3 and sys.argv[3].endswith('.json'):
+            regions_file = sys.argv[3]
+            days = int(sys.argv[4]) if len(sys.argv) > 4 else 5
+            geom = int(sys.argv[5]) if len(sys.argv) > 5 else 10
+        else:
+            regions_file = None
+            days = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+            geom = int(sys.argv[4]) if len(sys.argv) > 4 else 10
 
         gen = ConfigGenerator(base_config, days=days)
         taxi_densities = [5, 10, 15, 20, 25]  # taxis/km²
@@ -814,7 +840,8 @@ if __name__ == '__main__':
         for d in d_list:
             for R in R_list:
                 for behav in range(4):
-                    conf = gen.generate_config(d, R, "safety_objective", geom, behav)
+                    conf = gen.generate_config(d, R, "safety_objective", geom, behav,
+                                               regions_file=regions_file)
                     if conf is not None:
                         fname, content = gen.dump_config(conf)
                         with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
