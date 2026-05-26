@@ -746,14 +746,15 @@ if __name__ == '__main__':
 
         for d in d_list:
             for R in R_list:
-                conf = gen.generate_config(d, R, "nearest_passenger_pref", geom, 1)
-                if conf is not None:
-                    if max_declines is not None:
-                        conf["max_declines"] = max_declines
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, "nearest_passenger_pref", geom, behav)
+                    if conf is not None:
+                        if max_declines is not None:
+                            conf["max_declines"] = max_declines
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "two_sided":
         # Usage: python generate_configs.py two_sided <base_config> <variant> [days] [geom] [max_declines]
@@ -782,14 +783,15 @@ if __name__ == '__main__':
 
         for d in d_list:
             for R in R_list:
-                conf = gen.generate_config(d, R, alg, geom, 1)
-                if conf is not None:
-                    if max_declines is not None:
-                        conf["max_declines"] = max_declines
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, alg, geom, behav)
+                    if conf is not None:
+                        if max_declines is not None:
+                            conf["max_declines"] = max_declines
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "safety_objective":
         # Usage: python generate_configs.py safety_objective <base_config> [days] [geom]
@@ -875,15 +877,16 @@ if __name__ == '__main__':
 
         for d in d_list:
             for R in R_list:
-                conf = gen.generate_config(d, R, "safety_objective_two_sided", geom, 1,
-                                           regions_file=regions_file)
-                if conf is not None:
-                    if max_declines is not None:
-                        conf["max_declines"] = max_declines
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, "safety_objective_two_sided", geom, behav,
+                                               regions_file=regions_file)
+                    if conf is not None:
+                        if max_declines is not None:
+                            conf["max_declines"] = max_declines
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "calibrate_supply":
         # Calibration Layer 1/2: nearest algorithm, no breaks, constant demand rate.
