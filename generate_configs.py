@@ -654,12 +654,13 @@ if __name__ == '__main__':
 
         for d in d_list:
             for R in R_list:
-                conf = gen.generate_config(d, R, "nearest", geom, 1)
-                if conf is not None:
-                    fname, content = gen.dump_config(conf)
-                    with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
-                        f.write(content)
-                    print(f"Successfully wrote {fname}")
+                for behav in range(4):
+                    conf = gen.generate_config(d, R, "nearest", geom, behav)
+                    if conf is not None:
+                        fname, content = gen.dump_config(conf)
+                        with open(CONFIGS_PATH_PREFIX + fname, 'w') as f:
+                            f.write(content)
+                        print(f"Successfully wrote {fname}")
 
     elif mode == "region_pref":
         # Usage: python generate_configs.py region_pref <base_config> <regions_file> [days] [geom] [max_declines]
