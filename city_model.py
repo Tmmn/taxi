@@ -2454,8 +2454,7 @@ class Simulation:
         rfrac, rint = np.modf(self.get_effective_request_rate())
         for _ in range(int(rint)):
             self.add_request()
-
-            new_requests.add(self.latest_request_id)
+            new_requests.add(self.latest_request_id - 1)
         if rfrac > 1e-3:
             try:
                 p = self.city.request_p.pop()
@@ -2464,7 +2463,7 @@ class Simulation:
                 p = self.city.request_p.pop()
             if p < rfrac:
                 self.add_request()
-                new_requests.add(self.latest_request_id)
+                new_requests.add(self.latest_request_id - 1)
 
         # this automatically pushes out requests that have been waiting for too long
         self.requests_pending_deque_batch.append(new_requests)
