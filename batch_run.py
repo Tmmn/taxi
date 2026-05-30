@@ -1,11 +1,11 @@
-import os
-import sys
 import glob
+import os
 import subprocess
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "batch_run_logs")
+
 
 def run_simulation(config_path):
     try:
@@ -42,6 +42,7 @@ def run_simulation(config_path):
     except Exception as e:
         return False, config_path, f"Exception while running {config_path}: {e}", None
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python batch_run.py folder_containing_configs")
@@ -63,8 +64,7 @@ if __name__ == "__main__":
 
     print(f"Found {len(config_files)} configuration files in {config_folder}")
 
-    # Determine number of workers. Default to CPU count.
-    # You can adjust this if you want to limit the number of parallel processes
+    # Determine number of workers: adjust this to limit the number of parallel processes
     max_workers = os.cpu_count()
     print(f"Running simulations with {max_workers} parallel workers...")
 
