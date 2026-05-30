@@ -297,13 +297,14 @@ def return_taxi_from_break(sim: Simulation, t: Taxi) -> None:
     if not t.on_break:
         return
 
+    was_end_of_shift = t.break_is_end_of_shift
     t.on_break = False
     t.available = True
     t.time_waiting_since_last_trip = 0
     t.scheduled_return_time_tu = None
     t.break_is_end_of_shift = False
 
-    if t.break_is_end_of_shift and sim.use_break_cohorts and t.break_profile_id is not None:
+    if was_end_of_shift and sim.use_break_cohorts and t.break_profile_id is not None:
         assert sim.shift_duration_tu_config is not None
         work_time = float(t.time_serving + t.time_to_request + t.time_cruising)
         t.shift_start_work_time_tu = work_time

@@ -1417,11 +1417,13 @@ class Simulation:
                         continue
 
                     # Score all candidates; try in descending score order
-                    scored = sorted(all_within, key=lambda tid, req=r: -self._passenger_score(req, self.taxis[tid]))
+                    scored = sorted(
+                        [(tid, self._passenger_score(r, self.taxis[tid])) for tid in all_within],
+                        key=lambda x: -x[1]
+                    )
 
                     assigned = False
-                    for taxi_id in scored:
-                        score = self._passenger_score(r, self.taxis[taxi_id])
+                    for taxi_id, score in scored:
                         p_accept = self._passenger_acceptance_prob(r, score)
                         if self.rng.random() < p_accept:
                             self.assign_request(request_id, taxi_id)
