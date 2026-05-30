@@ -1613,9 +1613,15 @@ class Simulation:
 
                     sorted_regions = sorted(self.regions, key=_supply_safety)
 
+                    # Collect unmatched by ID; restore arrival order at the end so the front-of-deque expiry check keeps working correctly.
+                    unmatched_ids = set()
+
                     # Process regions from least-safe to most-safe
                     for region in sorted_regions:
                         for request_id in region_requests[region["id"]]:
+                            if not self.taxis_available:
+                                unmatched_ids.add(request_id)
+                                continue
                             r = self.requests[request_id]
                             possible_taxi_ids = self.city.find_nearest_available_taxis(
                                 r.origin_cell,
@@ -1623,7 +1629,7 @@ class Simulation:
                                 radius=self.city.hard_limit
                             )
                             if not possible_taxi_ids:
-                                self.requests_pending_deque_temporary.append(request_id)
+                                unmatched_ids.add(request_id)
                                 continue
                             best_taxi_id = max(
                                 possible_taxi_ids,
@@ -1633,6 +1639,9 @@ class Simulation:
 
                     # Requests outside any region get the same safest-taxi-in-radius rule, served last
                     for request_id in unregioned:
+                        if not self.taxis_available:
+                            unmatched_ids.add(request_id)
+                            continue
                         r = self.requests[request_id]
                         possible_taxi_ids = self.city.find_nearest_available_taxis(
                             r.origin_cell,
@@ -1640,13 +1649,17 @@ class Simulation:
                             radius=self.city.hard_limit
                         )
                         if not possible_taxi_ids:
-                            self.requests_pending_deque_temporary.append(request_id)
+                            unmatched_ids.add(request_id)
                             continue
                         best_taxi_id = max(
                             possible_taxi_ids,
                             key=lambda tid: self.taxis[tid].safety_score
                         )
                         self.assign_request(request_id, best_taxi_id)
+
+                    for request_id in all_pending:
+                        if request_id in unmatched_ids:
+                            self.requests_pending_deque_temporary.append(request_id)
 
             case "safety_objective_two_sided":
                 # System safety-objective matching with two-sided preferences (region driver + passenger).
@@ -1676,8 +1689,7 @@ class Simulation:
                     )
                     if not candidate_ids:
                         r.last_no_match_reason = 'no_taxi_available' if not all_within else 'driver_declined'
-                        self.requests_pending_deque_temporary.append(request_id)
-                        return
+                        return False
 
                     p_driver = self._region_acceptance_probability(r)  # same for all taxis for this request
                     assigned = False
@@ -1710,6 +1722,7 @@ class Simulation:
 
                     if assigned:
                         r.last_no_match_reason = None
+                        return True
                     else:
                         if any_driver_willing:
                             r.last_no_match_reason = 'passenger_declined'
@@ -1717,12 +1730,12 @@ class Simulation:
                             r.last_no_match_reason = 'driver_declined'
                         else:
                             r.last_no_match_reason = 'no_taxi_available'
-                        self.requests_pending_deque_temporary.append(request_id)
+                        return False
 
                 if not self.regions:
-                    # No region config: process in arrival order
                     for request_id in all_pending:
-                        _process_sot(request_id)
+                        if not _process_sot(request_id):
+                            self.requests_pending_deque_temporary.append(request_id)
                 else:
                     # Group requests by pickup region, preserving arrival order
                     region_requests = {region["id"]: [] for region in self.regions}
@@ -1744,14 +1757,21 @@ class Simulation:
 
                     sorted_regions = sorted(self.regions, key=_supply_safety_sot)
 
-                    # Process regions from least-safe to most-safe
+                    # Collect unmatched by ID; restore arrival order at the end so the front-of-deque expiry check keeps working correctly.
+                    unmatched_ids = set()
+
                     for region in sorted_regions:
                         for request_id in region_requests[region["id"]]:
-                            _process_sot(request_id)
+                            if not _process_sot(request_id):
+                                unmatched_ids.add(request_id)
 
-                    # Requests outside any region served last
                     for request_id in unregioned:
-                        _process_sot(request_id)
+                        if not _process_sot(request_id):
+                            unmatched_ids.add(request_id)
+
+                    for request_id in all_pending:
+                        if request_id in unmatched_ids:
+                            self.requests_pending_deque_temporary.append(request_id)
 
             case _:
                 raise ValueError("I know of no such assignment mode! Please provide a valid one!")
