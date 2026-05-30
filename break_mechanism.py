@@ -306,7 +306,7 @@ def return_taxi_from_break(sim: Simulation, t: Taxi) -> None:
 
     if was_end_of_shift and sim.use_break_cohorts and t.break_profile_id is not None:
         assert sim.shift_duration_tu_config is not None
-        work_time = float(t.time_serving + t.time_to_request + t.time_cruising)
+        work_time = float(t.time_serving + t.time_to_request + t.time_cruising + t.time_waiting)
         t.shift_start_work_time_tu = work_time
         t.shift_start_income = sim.eval_taxi_income(t.taxi_id)
         target_spec = sim.shift_duration_tu_config[t.break_profile_id]
