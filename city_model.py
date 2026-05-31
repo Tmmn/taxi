@@ -18,7 +18,7 @@ import shutil
 import os
 
 # special data types
-from collections import deque
+from collections import deque, defaultdict
 from queue import Queue
 from randomdict import RandomDict
 
@@ -1576,22 +1576,41 @@ class Simulation:
                 all_pending = list(self.requests_pending_deque)
                 self.requests_pending_deque.clear()
 
+                # Fast path: no taxis at all
+                if not self.taxis_available:
+                    self.requests_pending_deque_temporary.extend(all_pending)
+                    return
+
+                # Build reverse map: origin_cell -> set of taxi_ids that can reach it
+                # O(N_taxis * hard_limit^2) instead of O(N_pending * hard_limit^2);
+                # critical when N_pending >> N_taxis
+                pending_cells = {self.requests[rid].origin_cell for rid in all_pending}
+                reachable_taxis_by_cell = defaultdict(set)
+                for taxi_id in self.taxis_available:
+                    taxi = self.taxis[taxi_id]
+                    tree = self.city.bfs_trees[taxi.cell]
+                    for depth in range(self.city.hard_limit):
+                        for node in tree[depth]:
+                            if node in pending_cells:
+                                reachable_taxis_by_cell[node].add(taxi_id)
+
+                def _get_available_so(origin_cell):
+                    # Filter pre-computed candidates to those still available this round
+                    return [t for t in reachable_taxis_by_cell.get(origin_cell, ())
+                            if t in self.taxis_available]
+
                 if not self.regions:
                     # No region config: assign safest taxi within radius in arrival order
                     for request_id in all_pending:
-                        r = self.requests[request_id]
-                        possible_taxi_ids = self.city.find_nearest_available_taxis(
-                            r.origin_cell,
-                            mode="circle",
-                            radius=self.city.hard_limit
-                        )
-                        if not possible_taxi_ids:
+                        if not self.taxis_available:
                             self.requests_pending_deque_temporary.append(request_id)
                             continue
-                        best_taxi_id = max(
-                            possible_taxi_ids,
-                            key=lambda tid: self.taxis[tid].safety_score
-                        )
+                        r = self.requests[request_id]
+                        available = _get_available_so(r.origin_cell)
+                        if not available:
+                            self.requests_pending_deque_temporary.append(request_id)
+                            continue
+                        best_taxi_id = max(available, key=lambda tid: self.taxis[tid].safety_score)
                         self.assign_request(request_id, best_taxi_id)
                 else:
                     # Group requests by pickup region, preserving arrival order
@@ -1625,18 +1644,11 @@ class Simulation:
                                 unmatched_ids.add(request_id)
                                 continue
                             r = self.requests[request_id]
-                            possible_taxi_ids = self.city.find_nearest_available_taxis(
-                                r.origin_cell,
-                                mode="circle",
-                                radius=self.city.hard_limit
-                            )
-                            if not possible_taxi_ids:
+                            available = _get_available_so(r.origin_cell)
+                            if not available:
                                 unmatched_ids.add(request_id)
                                 continue
-                            best_taxi_id = max(
-                                possible_taxi_ids,
-                                key=lambda tid: self.taxis[tid].safety_score
-                            )
+                            best_taxi_id = max(available, key=lambda tid: self.taxis[tid].safety_score)
                             self.assign_request(request_id, best_taxi_id)
 
                     # Requests outside any region get the same safest-taxi-in-radius rule, served last
@@ -1645,18 +1657,11 @@ class Simulation:
                             unmatched_ids.add(request_id)
                             continue
                         r = self.requests[request_id]
-                        possible_taxi_ids = self.city.find_nearest_available_taxis(
-                            r.origin_cell,
-                            mode="circle",
-                            radius=self.city.hard_limit
-                        )
-                        if not possible_taxi_ids:
+                        available = _get_available_so(r.origin_cell)
+                        if not available:
                             unmatched_ids.add(request_id)
                             continue
-                        best_taxi_id = max(
-                            possible_taxi_ids,
-                            key=lambda tid: self.taxis[tid].safety_score
-                        )
+                        best_taxi_id = max(available, key=lambda tid: self.taxis[tid].safety_score)
                         self.assign_request(request_id, best_taxi_id)
 
                     for request_id in all_pending:
@@ -1677,13 +1682,29 @@ class Simulation:
                 all_pending = list(self.requests_pending_deque)
                 self.requests_pending_deque.clear()
 
+                # Fast path: no taxis at all
+                if not self.taxis_available:
+                    self.requests_pending_deque_temporary.extend(all_pending)
+                    return
+
+                # Build reverse map: origin_cell -> set of taxi_ids that can reach it
+                # O(N_taxis * hard_limit^2) instead of O(N_pending * hard_limit^2);
+                # critical when N_pending >> N_taxis
+                pending_cells = {self.requests[rid].origin_cell for rid in all_pending}
+                reachable_taxis_by_cell_sot = defaultdict(set)
+                for taxi_id in self.taxis_available:
+                    taxi = self.taxis[taxi_id]
+                    tree = self.city.bfs_trees[taxi.cell]
+                    for depth in range(self.city.hard_limit):
+                        for node in tree[depth]:
+                            if node in pending_cells:
+                                reachable_taxis_by_cell_sot[node].add(taxi_id)
+
                 def _process_sot(request_id):
                     r = self.requests[request_id]
-                    all_within = self.city.find_nearest_available_taxis(
-                        r.origin_cell,
-                        mode="circle",
-                        radius=self.city.hard_limit
-                    )
+                    # Taxis in radius at batch start that are still available now
+                    all_within = [t for t in reachable_taxis_by_cell_sot.get(r.origin_cell, ())
+                                  if t in self.taxis_available]
                     candidate_ids = sorted(
                         [t for t in all_within if t not in r.declined_taxi_ids],
                         key=lambda tid: self.taxis[tid].safety_score,
