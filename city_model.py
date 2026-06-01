@@ -59,9 +59,6 @@ class Taxi:
     actual_request_executing : int
         id of request that is being executed by the taxi
 
-    requests_completed : list of ints
-        list of requests completed by taxi
-
     time_waiting : int
         time spent with empty waiting
 
@@ -167,7 +164,6 @@ class Taxi:
     with_passenger: bool
     on_break: bool
     actual_request_executing: int | None
-    requests_completed: set[int]
     time_waiting: int
     time_waiting_since_last_trip: int
     time_on_break: int
@@ -200,7 +196,6 @@ class Taxi:
     home: tuple[int, int] | None
     decline_count: int
     total_declines: int
-    trip_lengths: list
     trip_count: int
     trip_length_sum: float
     trip_length_sum_sq: float
@@ -225,8 +220,6 @@ class Taxi:
             self.on_break = False
 
             self.actual_request_executing = None
-            self.requests_completed = set()
-            self.trip_lengths = []
             self.trip_count = 0
             self.trip_length_sum = 0.0
             self.trip_length_sum_sq = 0.0
@@ -1995,12 +1988,10 @@ class Simulation:
             r.mode = 'done'
             r.driver_safety_score_end = float(t.safety_score)
             self.requests_in_progress.remove(request_id)
-            t.requests_completed.add(request_id)
             # remove taxi from to_destination list
             self.taxis_to_destination.remove(r.taxi_id)
 
             trip_len = float(abs(r.dy - r.oy) + abs(r.dx - r.ox))
-            t.trip_lengths.append(trip_len)
             t.trip_count += 1
             t.trip_length_sum += trip_len
             t.trip_length_sum_sq += trip_len * trip_len
@@ -2107,7 +2098,7 @@ class Simulation:
         t = self.taxis[taxi_id]
 
         price = \
-            len(t.requests_completed) * self.price_fixed + \
+            t.trip_count * self.price_fixed + \
             int(not t.available) * self.price_fixed + \
             t.time_serving * self.price_per_dist - \
             (t.time_cruising + t.time_serving + t.time_to_request) * self.cost_per_unit - \
