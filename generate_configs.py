@@ -669,7 +669,7 @@ if __name__ == '__main__':
             print(
                 "Usage: python generate_configs.py region_pref <base_config> <regions_file> [days] [geom] [max_declines]")
             print(
-                "Example: python generate_configs.py region_pref big_city_base.conf configs/regions_big_city_imbalanced.json 5 10 3")
+                "Example: python generate_configs.py region_pref big_city_base.conf configs/regions_big_city_balanced.json 5 10 3")
             sys.exit(1)
 
         base_config = sys.argv[2]
