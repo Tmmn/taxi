@@ -9,3 +9,6 @@ slurm-*
 .idea
 /.venv/
 /batch_run_logs
+/*/cache/
+/configs/exp*/
+/configs/calibration/

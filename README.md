@@ -202,8 +202,8 @@ Each taxi maintains a `safety_score ∈ [safety_score_min, safety_score_max]`. I
 
 - **While serving** (en route to pickup or carrying a passenger): `safety_score += safety_score_change_serving_rate` (
   typically negative).
-- **While waiting** (available, not on break): `safety_score += safety_score_change_waiting_rate` (typically positive,
-  representing rest).
+- **While waiting** (available, not on break): `safety_score += safety_score_change_waiting_rate` (typically a small
+  negative value; slight fatigue even while idle).
 - **While on break**: non-linear recovery towards the taxi's `initial_safety_score` ceiling —
   `target(t) = break_start_safety_score + (initial_safety_score - break_start_safety_score) × t/(t + C)`, where
   `C = safety_score_break_recovery_constant`. Recovery is fast initially and diminishes over time.
@@ -214,7 +214,7 @@ also becomes the personal recovery ceiling (inherent safety) .
 ```json
 {
   "safety_score_change_serving_rate": -0.02,
-  "safety_score_change_waiting_rate": 0.01,
+  "safety_score_change_waiting_rate": -0.001,
   "safety_score_break_recovery_constant": 180.0,
   "safety_score_min": 0,
   "safety_score_max": 100,
@@ -226,7 +226,7 @@ also becomes the personal recovery ceiling (inherent safety) .
 | Key                                                    | Default          | Description                                                                                                         |
 |--------------------------------------------------------|------------------|---------------------------------------------------------------------------------------------------------------------|
 | `safety_score_change_serving_rate`                     | `-0.02`          | Per-TU delta while assigned (to pickup or with passenger). Negative = fatigue.                                      |
-| `safety_score_change_waiting_rate`                     | `0.01`           | Per-TU delta while unassigned and not on break. Positive = passive rest.                                            |
+| `safety_score_change_waiting_rate`                     | `-0.001`         | Per-TU delta while unassigned and not on break. Typically a small negative value.                                   |
 | `safety_score_break_recovery_constant`                 | `180.0`          | Half-recovery time C in TU: after C TU on break, score is halfway to ceiling.                                       |
 | `safety_score_min`, `safety_score_max`                 | `0`, `100`       | Hard clipping bounds.                                                                                               |
 | `initial_safety_score_min`, `initial_safety_score_max` | equal to min/max | Per-taxi initialization range and personal recovery ceiling. Must be within `[safety_score_min, safety_score_max]`. |
