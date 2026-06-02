@@ -861,7 +861,6 @@ class Simulation:
         # speeding up going through requests in the order of waiting times
         # they are pushed into a deque in the order of timestamps
         self.requests_pending_deque = deque()
-        self.requests_pending_deque_batch = deque(maxlen=self.max_request_waiting_time)
         self.requests_pending_deque_temporary = deque()
         self.requests_in_progress = set()
 
@@ -2465,6 +2464,17 @@ class Simulation:
         # check and manage taxi breaks
         check_and_manage_breaks(self)
 
+        # enforce patience once per step before matching so expired requests cannot be assigned
+        while len(self.requests_pending_deque) > 0:
+            request_id = self.requests_pending_deque[0]
+            r = self.requests[request_id]
+            if self.time - r.timestamps['request'] < self.max_request_waiting_time:
+                break
+            self.requests_pending_deque.popleft()
+            r.mode = 'dropped'
+            r.cancellation_reason = r.last_no_match_reason if r.last_no_match_reason else 'patience_exceeded'
+            self._requests_done_buffer.append(r)
+
         # make matchings
         self.matching_algorithm(mode=self.matching)
 
@@ -2472,23 +2482,11 @@ class Simulation:
         self.requests_pending_deque_temporary.reverse()
         self.requests_pending_deque.extendleft(self.requests_pending_deque_temporary)
         self.requests_pending_deque_temporary = deque()
-        # delete old requests from pending ones
-        if self.time > self.max_request_waiting_time and len(self.requests_pending_deque) > 0:
-            while len(self.requests_pending_deque) > 0 and (
-                    self.requests_pending_deque[0] in self.requests_pending_deque_batch[0]):
-                request_id = self.requests_pending_deque.popleft()
-                r = self.requests[request_id]
-                r.mode = 'dropped'
-                r.cancellation_reason = r.last_no_match_reason if r.last_no_match_reason else 'patience_exceeded'
-                self._requests_done_buffer.append(r)
-
 
         # generate requests
-        new_requests = set()
         rfrac, rint = np.modf(self.get_effective_request_rate())
         for _ in range(int(rint)):
             self.add_request()
-            new_requests.add(self.latest_request_id - 1)
         if rfrac > 1e-3:
             try:
                 p = self.city.request_p.pop()
@@ -2497,10 +2495,6 @@ class Simulation:
                 p = self.city.request_p.pop()
             if p < rfrac:
                 self.add_request()
-                new_requests.add(self.latest_request_id - 1)
-
-        # this automatically pushes out requests that have been waiting for too long
-        self.requests_pending_deque_batch.append(new_requests)
 
         if self.show_plot:
             self.plot_simulation()
