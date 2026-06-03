@@ -1318,6 +1318,7 @@ class Simulation:
                     )
 
                     if not possible_taxi_ids:
+                        r.last_no_match_reason = 'no_taxi_available' if not all_within else 'driver_declined'
                         self.requests_pending_deque_temporary.append(request_id)
                         continue
 
@@ -1334,6 +1335,7 @@ class Simulation:
                         if forced or self.rng.random() < p_accept:
                             taxi.decline_count = 0
                             self.assign_request(request_id, taxi_id)
+                            r.last_no_match_reason = None
                             assigned = True
                             break
                         else:
@@ -1342,6 +1344,7 @@ class Simulation:
                             r.declined_taxi_ids.add(taxi_id)
 
                     if not assigned:
+                        r.last_no_match_reason = 'driver_declined'
                         self.requests_pending_deque_temporary.append(request_id)
 
             case "nearest_region_pref":
@@ -1361,6 +1364,7 @@ class Simulation:
                     )
 
                     if not possible_taxi_ids:
+                        r.last_no_match_reason = 'no_taxi_available' if not all_within else 'driver_declined'
                         self.requests_pending_deque_temporary.append(request_id)
                         continue
 
@@ -1379,6 +1383,7 @@ class Simulation:
                         if forced or self.rng.random() < p_accept:
                             taxi.decline_count = 0
                             self.assign_request(request_id, taxi_id)
+                            r.last_no_match_reason = None
                             assigned = True
                             break
                         else:
@@ -1387,6 +1392,7 @@ class Simulation:
                             r.declined_taxi_ids.add(taxi_id)
 
                     if not assigned:
+                        r.last_no_match_reason = 'driver_declined'
                         self.requests_pending_deque_temporary.append(request_id)
 
             case "nearest_passenger_pref":
@@ -2472,7 +2478,8 @@ class Simulation:
                 break
             self.requests_pending_deque.popleft()
             r.mode = 'dropped'
-            r.cancellation_reason = r.last_no_match_reason if r.last_no_match_reason else 'patience_exceeded'
+            # A None reason means no taxi was ever available to attempt a match (any driver/passenger decline sets a reason explicitly)
+            r.cancellation_reason = r.last_no_match_reason if r.last_no_match_reason else 'no_taxi_available'
             self._requests_done_buffer.append(r)
 
         # make matchings
