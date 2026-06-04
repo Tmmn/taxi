@@ -1524,18 +1524,20 @@ class Simulation:
                         self.requests_pending_deque_temporary.append(request_id)
                         continue
 
-                    p_driver = self._region_acceptance_probability(r)
+                    p_base = self._region_acceptance_probability(r)
                     assigned = False
                     any_driver_willing = False
 
                     for taxi_id in candidate_ids:
                         taxi = self.taxis[taxi_id]
 
-                        # driver side: region popularity
+                        # driver side: region popularity, relaxed by income flexibility
                         forced_driver = (
                                 self.max_declines is not None and
                                 taxi.decline_count >= self.max_declines
                         )
+                        flexibility = self._driver_income_flexibility(taxi)
+                        p_driver = p_base + flexibility * (self.preference_base_acceptance_prob - p_base)
                         driver_accepts = forced_driver or self.rng.random() < p_driver
                         if not driver_accepts:
                             taxi.decline_count += 1
@@ -1712,18 +1714,20 @@ class Simulation:
                         r.last_no_match_reason = 'no_taxi_available' if not all_within else 'driver_declined'
                         return False
 
-                    p_driver = self._region_acceptance_probability(r)  # same for all taxis for this request
+                    p_base = self._region_acceptance_probability(r)  # request-level; relaxed per-taxi below
                     assigned = False
                     any_driver_willing = False
 
                     for taxi_id in candidate_ids:
                         taxi = self.taxis[taxi_id]
 
-                        # driver side: region popularity preference
+                        # driver side: region popularity preference, relaxed by income flexibility
                         forced_driver = (
                             self.max_declines is not None and
                             taxi.decline_count >= self.max_declines
                         )
+                        flexibility = self._driver_income_flexibility(taxi)
+                        p_driver = p_base + flexibility * (self.preference_base_acceptance_prob - p_base)
                         driver_accepts = forced_driver or self.rng.random() < p_driver
                         if not driver_accepts:
                             taxi.decline_count += 1
@@ -2323,7 +2327,6 @@ class Simulation:
                     "pref_strength_route": [round(self.taxis[t].pref_strength_route, 4) for t in self.taxis],
                     "nonpreferred_accept_ceiling": [round(self.taxis[t].nonpreferred_accept_ceiling, 4) for t in self.taxis],
                     "break_profile_id": [self.taxis[t].break_profile_id for t in self.taxis],
-                    "shift_duration_tu": [self.taxis[t].shift_duration_tu for t in self.taxis],
                     "initial_safety_score": [round(self.taxis[t].initial_safety_score, 4) for t in self.taxis],
                 }
                 with open(data_path + '/run_' + run_id + '_taxi_static.json', 'w') as f:

@@ -1,7 +1,7 @@
 # Taxi Simulation
 
 Agent-based simulation of a taxi–passenger city system on a discrete grid. Taxis and passengers have heterogeneous
-preferences ang get matched by algorithms that range from simple nearest-neighbor to two-sided preference-weighted
+preferences and get matched by algorithms that range from simple nearest-neighbor to two-sided preference-weighted
 scoring.
 
 ---
@@ -27,8 +27,8 @@ scoring.
 | `nearest`                            | Assign the nearest available taxi within `hard_limit`.                                                                                                                                                                                                                                                                                                                                     |
 | `nearest_distance_pref`              | Nearest matching; taxis probabilistically decline based on route-length preference. Declines are tracked per request so declined taxis are skipped on retry.                                                                                                                                                                                                                               |
 | `nearest_region_pref`                | Nearest matching; acceptance probability is proportional to the region popularity score of the request origin/destination.                                                                                                                                                                                                                                                                 |
-| `nearest_passenger_pref`             | Passenger preference scoring: all taxis in radius are scored by proximity, safety, and pickup wait. The best-scoring taxi is accepted with a sigmoid probability whose threshold decays with waiting time — every passenger eventually accepts.                                                                                                                                            |
-| `nearest_two_sided_dist_pass_pref`   | Two-sided matching: driver route-length preference checked first (permanent per-request decline); then passenger preference score checked. Passenger rejections are not permanent — threshold relaxes over time.                                                                                                                                                                           |
+| `nearest_passenger_pref`             | Passenger preference scoring: all taxis in radius are scored by proximity, safety, and pickup wait. The best-scoring taxi is accepted with a sigmoid probability whose threshold decays with waiting time - every passenger eventually accepts.                                                                                                                                            |
+| `nearest_two_sided_dist_pass_pref`   | Two-sided matching: driver route-length preference checked first (permanent per-request decline); then passenger preference score checked. Passenger rejections are not permanent - threshold relaxes over time.                                                                                                                                                                           |
 | `nearest_two_sided_region_pass_pref` | Two-sided matching: driver region popularity preference checked first (permanent per-request decline); then passenger preference score checked. Requires a `regions` config block.                                                                                                                                                                                                         |
 | `safety_objective`                   | Objective safety-optimal baseline: sorts regions by ascending avg safety score of available taxis at pickup (least-safe region first), then within each region serves the oldest request first, always assigning the globally most-safe available taxi. No preferences applied. Requires a `regions` config block for region-aware ordering; falls back to global arrival-order otherwise. |
 | `safety_objective_two_sided`         | Region-aware safety objective combined with two-sided preferences: same region-prioritised, safest-taxi-first dispatching as `safety_objective`, plus driver region-popularity preference and passenger safety-score preference layered on top. Requires a `regions` config block.                                                                                                         |
@@ -204,7 +204,7 @@ Each taxi maintains a `safety_score ∈ [safety_score_min, safety_score_max]`. I
   typically negative).
 - **While waiting** (available, not on break): `safety_score += safety_score_change_waiting_rate` (typically a small
   negative value; slight fatigue even while idle).
-- **While on break**: non-linear recovery towards the taxi's `initial_safety_score` ceiling —
+- **While on break**: non-linear recovery towards the taxi's `initial_safety_score` ceiling -
   `target(t) = break_start_safety_score + (initial_safety_score - break_start_safety_score) × t/(t + C)`, where
   `C = safety_score_break_recovery_constant`. Recovery is fast initially and diminishes over time.
 
@@ -242,7 +242,7 @@ events:
 - **At assignment**: `+= satisfaction_pref_match_delta` if the trip's Manhattan length matches the driver's
   `route_length_pref` profile (`short_pref`, `neutral_pref`, `long_pref`), otherwise
   `+= satisfaction_pref_mismatch_delta`. This fires for **every matching algorithm** regardless of what criterion the
-  algorithm used to accept the match — route-length satisfaction is a property of the driver, not of the algorithm.
+  algorithm used to accept the match - route-length satisfaction is a property of the driver, not of the algorithm.
   `neutral_pref` drivers always count as matched.
 - **At dropoff**: `+= satisfaction_income_weight × tanh(trip_income / satisfaction_income_ref)`.
 
@@ -315,6 +315,47 @@ where `match_score ∈ [0, 1]` scales with how well the route fits the preferenc
 | `preference_base_acceptance_prob` | `0.9`                   | Upper acceptance probability for strongly preferred routes.                                                                  |
 | `nonpreferred_accept_ceiling`     | `0.25`                  | Maximum acceptance probability for non-preferred routes.                                                                     |
 | `max_declines`                    | `null`                  | Per-request forced-accept threshold: after this many declines by a single taxi, it must accept. `null` disables.             |
+
+---
+
+### Driver income flexibility
+
+A driver who is falling behind on earnings becomes less picky and accepts trips they would otherwise decline. Optional:
+disabled unless `income_target_rate` is set, in which case preferences behave exactly as described above.
+
+`income_target_rate` is a target earning *pace* (income per unit of work time). At each match attempt, a driver is
+compared against how much they should have earned for the time worked so far this shift:
+
+```
+target_so_far = income_target_rate × work_time_this_shift
+behind        = max(0, target_so_far − earned_this_shift) / full_shift_target
+flexibility   = sigmoid((behind − driver_flexibility_threshold) / driver_flexibility_temperature)
+```
+
+`behind` is how far the driver trails target, as a fraction of a whole shift's target income
+(`full_shift_target = income_target_rate × shift_duration_tu`). It is 0 at the start of a shift and grows only if
+earnings keep lagging. `flexibility` runs from 0 (on target, preferences fully active) to 1 (far behind, preferences
+ignored). `driver_flexibility_threshold` is the gap at which relaxation kicks in; `driver_flexibility_temperature` sets
+how abruptly. (When breaks are disabled there is no shift, so `behind` is measured over the taxi's whole run instead.)
+
+`flexibility` then eases the driver's acceptance toward `preference_base_acceptance_prob`, the same cap a fully matched
+trip uses:
+
+```
+route-length pref:   effective_pref_strength = pref_strength × (1 − flexibility)
+                     effective_ceiling       = ceiling + flexibility × (base_acceptance − ceiling)
+region pref:         p_accept = p_region + flexibility × (base_acceptance − p_region)
+```
+
+This applies to every algorithm with a driver preference (`nearest_distance_pref`, `nearest_region_pref`,
+`nearest_two_sided_dist_pass_pref`, `nearest_two_sided_region_pass_pref`, and the region layer of
+`safety_objective_two_sided`), but not to plain `safety_objective`, which has no driver preference.
+
+| Key                              | Default | Description                                                                                     |
+|----------------------------------|---------|-------------------------------------------------------------------------------------------------|
+| `income_target_rate`             | `null`  | Expected income per work-time unit. `null` disables the whole model. Must be `> 0` when set.    |
+| `driver_flexibility_threshold`   | `0.3`   | Shortfall fraction at the sigmoid midpoint; below it preferences stay active, above they relax. |
+| `driver_flexibility_temperature` | `0.15`  | Sigmoid steepness for the transition; smaller is sharper. Must be `> 0`.                        |
 
 ---
 
@@ -405,11 +446,11 @@ Configured in `break_cohort_settings` (one entry per cohort):
 
 Three break types fire in priority order:
 
-1. **End-of-shift break** — fires when accumulated work time since shift start ≥ `shift_duration_tu`. The taxi takes
+1. **End-of-shift break** - fires when accumulated work time since shift start ≥ `shift_duration_tu`. The taxi takes
    `inter_shift_rest_tu` rest; after returning, a new shift begins.
-2. **Intra-shift break** — fires when work time since last break ≥ `intra_shift_break_after_work_tu`. Duration is
+2. **Intra-shift break** - fires when work time since last break ≥ `intra_shift_break_after_work_tu`. Duration is
    `intra_shift_break_duration_tu`.
-3. **Demotivation break** — fires when continuous waiting time (no assignment) ≥ `demotivation_threshold_tu`. Duration
+3. **Demotivation break** - fires when continuous waiting time (no assignment) ≥ `demotivation_threshold_tu`. Duration
    is `intra_shift_break_duration_tu`.
 
 All breaks only fire when the taxi is **available** (not currently serving a request).
@@ -612,11 +653,11 @@ Supported modes:
 
 | Argument         | Required by                                                                                                                                            | Default                            | Description                                                                                                                                                                                                                 |
 |------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `<base>`         | `simple`, `sweep`, `nearest_baseline`, `passenger_pref`, `region_pref`, `distance_pref`, `two_sided`, `safety_objective`, `safety_objective_two_sided` | —                                  | Base `.conf` filename in `configs/` (include the extension, e.g. `big_city_base.conf`).                                                                                                                                     |
-| `<regions_file>` | required: `region_pref`, `two_sided region`, `safety_objective_two_sided`; optional: `safety_objective`                                                | —                                  | Path to a regions JSON file **relative to** `configs/` (e.g. `regions_big_city_balanced.json`). Its content is embedded under the `regions` key. For `safety_objective`, auto-detected when the argument ends with `.json`. |
-| `<dist\|region>` | `two_sided`                                                                                                                                            | —                                  | Variant: `dist` → `nearest_two_sided_dist_pass_pref`; `region` → `nearest_two_sided_region_pass_pref`.                                                                                                                      |
+| `<base>`         | `simple`, `sweep`, `nearest_baseline`, `passenger_pref`, `region_pref`, `distance_pref`, `two_sided`, `safety_objective`, `safety_objective_two_sided` | -                                  | Base `.conf` filename in `configs/` (include the extension, e.g. `big_city_base.conf`).                                                                                                                                     |
+| `<regions_file>` | required: `region_pref`, `two_sided region`, `safety_objective_two_sided`; optional: `safety_objective`                                                | -                                  | Path to a regions JSON file **relative to** `configs/` (e.g. `regions_big_city_balanced.json`). Its content is embedded under the `regions` key. For `safety_objective`, auto-detected when the argument ends with `.json`. |
+| `<dist\|region>` | `two_sided`                                                                                                                                            | -                                  | Variant: `dist` → `nearest_two_sided_dist_pass_pref`; `region` → `nearest_two_sided_region_pass_pref`.                                                                                                                      |
 | `[days]`         | optional for parameterised modes                                                                                                                       | `1` (`simple`) / `5` (all others)  | Simulation length in real days; scales `max_time` and `batch_size` (48 samples per day).                                                                                                                                    |
-| `[geom]`         | optional for parameterised modes                                                                                                                       | `0` (`simple`) / `10` (all others) | Geometry index — selects a row from `configs/geom_specification_compact.json`.                                                                                                                                              |
+| `[geom]`         | optional for parameterised modes                                                                                                                       | `0` (`simple`) / `10` (all others) | Geometry index - selects a row from `configs/geom_specification_compact.json`.                                                                                                                                              |
 | `[max_declines]` | optional for `passenger_pref`, `region_pref`, `distance_pref`, `two_sided`, `safety_objective_two_sided`                                               | off (`null`)                       | Per-request forced-accept threshold: a taxi that has declined the same request this many times must accept it next time. Omit to leave the feature off.                                                                     |
 
 Every generated config automatically includes all default values for breaks, safety, satisfaction, driver preferences,
@@ -652,13 +693,14 @@ bash batch_run.sh ...
 
 ## Output files
 
-Each run produces three gzipped files in `results/`:
+Each run produces 4-5 gzipped files in `results/`:
 
 | File                                     | Content                                                                                                                                          |
 |------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
 | `run_<id>_aggregates.csv.gz`             | Per-batch aggregate metrics (means/stds across taxis, region safety if configured). One row per batch step.                                      |
 | `run_<id>_per_taxi_metrics.json.gz`      | Per-batch snapshot of per-taxi metrics: trip lengths, income, time breakdowns, safety score, satisfaction score, decline counts, break state.    |
 | `run_<id>_per_request_metrics.json.gz`   | End-of-simulation dump of all requests: mode, timestamps, assigned taxi, safety scores, passenger type, preference weights, cancellation reason. |
+| `run_<id>_taxi_static.json.gz`           | One-time static attributes of every taxi (route preference, accept ceiling, shift cohort, initial safety). See field table below.                |
 | `run_<id>_region_safety_averages.csv.gz` | Per-batch regional average safety scores (only when `regions` is configured).                                                                    |
 
 ### Key per-request fields
@@ -678,15 +720,10 @@ Each run produces three gzipped files in `results/`:
 
 ## Analysis notebooks
 
-| Notebook                                   | Purpose                                                      |
-|--------------------------------------------|--------------------------------------------------------------|
-| `notebooks/distributions.ipynb`            | Request and trip length distributions.                       |
-| `notebooks/figures.ipynb`                  | Main result figures (service rate, waiting time).            |
-| `notebooks/region_analysis.ipynb`          | Safety inequality across spatial regions.                    |
-| `notebooks/satisfaction_metrics.ipynb`     | Driver satisfaction over time and by cohort.                 |
-| `notebooks/trip_safety_evolution.ipynb`    | Safety score trajectories during trips.                      |
-| `notebooks/worktime_break_behavior.ipynb`  | Break timing and shift structure analysis.                   |
-| `notebooks/request_metrics_analysis.ipynb` | Per-request outcome analysis including cancellation reasons. |
+| Notebook                        | Purpose                                           |
+|---------------------------------|---------------------------------------------------|
+| `notebooks/distributions.ipynb` | Request and trip length distributions.            |
+| `notebooks/figures.ipynb`       | Main result figures (service rate, waiting time). |
 
 ---
 
