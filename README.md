@@ -4,8 +4,6 @@ Agent-based simulation of a taxi–passenger city system on a discrete grid. Tax
 preferences and get matched by algorithms that range from simple nearest-neighbor to two-sided preference-weighted
 scoring.
 
----
-
 ## Core mechanics
 
 - Taxis move on an `n × m` square grid at one cell per time unit (TU).
@@ -18,8 +16,6 @@ scoring.
 - After dropoff, the taxi either stays at the dropoff location (`stay`) or returns to base (`go_back`), depending on
   `behaviour`. (`cruise` behavior is planned but not yet implemented.)
 
----
-
 ## Matching algorithms
 
 | config `matching` value              | Description                                                                                                                                                                                                                                                                                                                                                                                |
@@ -30,13 +26,11 @@ scoring.
 | `nearest_passenger_pref`             | Passenger preference scoring: all taxis in radius are scored by proximity, safety, and pickup wait. The best-scoring taxi is accepted with a sigmoid probability whose threshold decays with waiting time - every passenger eventually accepts.                                                                                                                                            |
 | `nearest_two_sided_dist_pass_pref`   | Two-sided matching: driver route-length preference checked first (permanent per-request decline); then passenger preference score checked. Passenger rejections are not permanent - threshold relaxes over time.                                                                                                                                                                           |
 | `nearest_two_sided_region_pass_pref` | Two-sided matching: driver region popularity preference checked first (permanent per-request decline); then passenger preference score checked. Requires a `regions` config block.                                                                                                                                                                                                         |
-| `safety_objective`                   | Objective safety-optimal baseline: sorts regions by ascending avg safety score of available taxis at pickup (least-safe region first), then within each region serves the oldest request first, always assigning the globally most-safe available taxi. No preferences applied. Requires a `regions` config block for region-aware ordering; falls back to global arrival-order otherwise. |
+| `safety_objective`                   | Objective safety-optimal baseline: sorts regions by ascending avg safety score of available taxis at pickup (least-safe region first), then within each region serves the oldest request first, assigning the safest available taxi within `hard_limit` of the pickup. No preferences applied. The `hard_limit` radius applies as in the other algorithms (it does not relocate idle taxis). Requires a `regions` config block for region-aware ordering; falls back to arrival-order otherwise. |
 | `safety_objective_two_sided`         | Region-aware safety objective combined with two-sided preferences: same region-prioritised, safest-taxi-first dispatching as `safety_objective`, plus driver region-popularity preference and passenger safety-score preference layered on top. Requires a `regions` config block.                                                                                                         |
 | `poorest`                            | Assign the taxi with the lowest cumulative income within `hard_limit`.                                                                                                                                                                                                                                                                                                                     |
 | `random_limited`                     | Random taxi within `hard_limit`.                                                                                                                                                                                                                                                                                                                                                           |
 | `random_unlimited`                   | Fully random taxi from the entire grid.                                                                                                                                                                                                                                                                                                                                                    |
-
----
 
 ## Configuration
 
@@ -96,8 +90,6 @@ supported key.
 | `cost_per_unit`            | `float`      | Operating cost per grid-cell travelled.                                                                   |
 | `cost_per_time`            | `float`      | Time-based operating cost per TU.                                                                         |
 
----
-
 ### Request origin and destination distributions
 
 Requests are sampled from a mixture of 2-D Gaussians. Two distribution lists are required: one for origins, one for
@@ -143,8 +135,6 @@ destinations. The geometry is also embedded in a compact `geom_specification_com
 
 `avg_request_lengths`, `R` and `d` are auto-computed by `ConfigGenerator` and embedded in generated configs for
 reference.
-
----
 
 ### Time-of-day request rate schedule
 
@@ -194,8 +184,6 @@ Windows must be non-overlapping; any time-of-day not covered uses a multiplier o
 | `day_length_tu`         | `8640`          | Length of one logical day in TU (8640 TU = 24 h). Used for time-of-day window logic and break day tracking. |
 | `request_rate_schedule` | `[]` (constant) | List of `{start, end, multiplier}` windows. Empty list means constant rate.                                 |
 
----
-
 ### Driver safety score
 
 Each taxi maintains a `safety_score ∈ [safety_score_min, safety_score_max]`. It evolves every TU:
@@ -230,8 +218,6 @@ also becomes the personal recovery ceiling (inherent safety) .
 | `safety_score_break_recovery_constant`                 | `180.0`          | Half-recovery time C in TU: after C TU on break, score is halfway to ceiling.                                       |
 | `safety_score_min`, `safety_score_max`                 | `0`, `100`       | Hard clipping bounds.                                                                                               |
 | `initial_safety_score_min`, `initial_safety_score_max` | equal to min/max | Per-taxi initialization range and personal recovery ceiling. Must be within `[safety_score_min, safety_score_max]`. |
-
----
 
 ### Driver satisfaction score
 
@@ -269,8 +255,6 @@ events:
 | `satisfaction_income_ref`          | `1000.0`       | Income normalization scale.                          |
 | `satisfaction_pref_match_delta`    | `0.2`          | Added at assignment of a preferred-length route.     |
 | `satisfaction_pref_mismatch_delta` | `-0.3`         | Added at assignment of a non-preferred-length route. |
-
----
 
 ### Driver route-length preferences
 
@@ -316,8 +300,6 @@ where `match_score ∈ [0, 1]` scales with how well the route fits the preferenc
 | `nonpreferred_accept_ceiling`     | `0.25`                  | Maximum acceptance probability for non-preferred routes.                                                                     |
 | `max_declines`                    | `null`                  | Per-request forced-accept threshold: after this many declines by a single taxi, it must accept. `null` disables.             |
 
----
-
 ### Driver income flexibility
 
 A driver who is falling behind on earnings becomes less picky and accepts trips they would otherwise decline. Optional:
@@ -356,8 +338,6 @@ This applies to every algorithm with a driver preference (`nearest_distance_pref
 | `income_target_rate`             | `null`  | Expected income per work-time unit. `null` disables the whole model. Must be `> 0` when set.    |
 | `driver_flexibility_threshold`   | `0.3`   | Shortfall fraction at the sigmoid midpoint; below it preferences stay active, above they relax. |
 | `driver_flexibility_temperature` | `0.15`  | Sigmoid steepness for the transition; smaller is sharper. Must be `> 0`.                        |
-
----
 
 ### Break and shift system
 
@@ -482,8 +462,6 @@ End-of-shift breaks can be deferred during rush hours to keep supply available:
 | `p_defer_end_of_shift_in_rush` | `0.0`   | Probability of deferring the end-of-shift break on each eligible TU.                                    |
 | `max_break_deferral_tu`        | `0`     | Cumulative deferral cap per break event; deferral stops once this is reached.                           |
 
----
-
 ### Passenger preferences
 
 Every request is assigned preference attributes at creation time, drawn from configurable distributions. These
@@ -581,8 +559,6 @@ attempt:
 | `driver_declined`    | Taxis were in range but all declined due to driver preferences (`nearest_two_sided_dist_pass_pref` or `nearest_two_sided_region_pass_pref`). |
 | `passenger_declined` | Willing taxis were available but the passenger score was too low.                                                                            |
 
----
-
 ### Region preferences
 
 Used by `nearest_region_pref`. Defines spatial regions with popularity scores that modulate driver acceptance
@@ -621,8 +597,6 @@ probability.
 | `default_popularity` | `100`      | Popularity for cells not covered by any defined region.                                                |
 | `match_mode`         | `"origin"` | Which coordinate drives acceptance: `"origin"`, `"destination"`, `"either"` (max), `"both"` (average). |
 | `max_declines`       | `null`     | Force-accept after this many declines by a single taxi per request.                                    |
-
----
 
 ## Config generation
 
@@ -663,8 +637,6 @@ Supported modes:
 Every generated config automatically includes all default values for breaks, safety, satisfaction, driver preferences,
 and passenger preferences, so base configs only need to specify what differs from defaults.
 
----
-
 ## Running simulations
 
 **Single run:**
@@ -688,8 +660,6 @@ Runs all `.conf` files in the given directory in parallel across available CPU c
 ```
 bash batch_run.sh ...
 ```
-
----
 
 ## Output files
 
@@ -716,16 +686,12 @@ Each run produces 4-5 gzipped files in `results/`:
 | `average_safety_score`                 | Mean driver safety score over the trip duration.                 |
 | `assigned_taxi_distance`               | Manhattan distance from taxi to pickup at assignment.            |
 
----
-
 ## Analysis notebooks
 
 | Notebook                        | Purpose                                           |
 |---------------------------------|---------------------------------------------------|
 | `notebooks/distributions.ipynb` | Request and trip length distributions.            |
 | `notebooks/figures.ipynb`       | Main result figures (service rate, waiting time). |
-
----
 
 ## Debugging with interactive visualization
 

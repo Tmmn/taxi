@@ -1832,20 +1832,22 @@ class Simulation:
     def _driver_income_flexibility(self, taxi) -> float:
         """Income-pressure flexibility factor in [0, 1].
 
-        Returns 0 when income is on target (preferences fully active) and
-        approaches 1 when the driver's income significantly lags the expected
-        pace for elapsed shift work time (preferences relax toward neutral).
+        Evaluates to its mathematical floor (~0.12 with default parameters) when income is on target or ahead
+        (shortfall = 0.0), and approaches 1 when the driver's income significantly lags the expected pace for
+        elapsed shift work time (preferences relax toward neutral).
+
+        NOTE: If you want this to return exactly 0 when on target, you must explicitly floor the sigmoid output
+        or adjust the math to clamp it.
 
         The shortfall fraction is:
             shortfall = max(0, expected_shift_income - actual_shift_income)
                         / (income_target_rate * shift_duration_tu)
 
-        If shift_duration_tu is None the normalization falls back to the
-        expected income accumulated so far (so flexibility still grows as the
-        gap widens, just without an absolute shift-length reference).
+        If shift_duration_tu is None the normalization falls back to the expected income accumulated so far
+        (so flexibility still grows as the gap widens, just without an absolute shift-length reference).
 
-        Note: shift_start_income must be reset alongside shift_start_work_time_tu
-        at the start of each new shift so the computation stays shift-relative.
+        Note: shift_start_income must be reset alongside shift_start_work_time_tu at the start of each new shift
+        so the computation stays shift-relative.
         """
         if self.income_target_rate is None:
             return 0.0
